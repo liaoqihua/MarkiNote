@@ -169,12 +169,20 @@
             <div class="preview-body">
                 <aside class="preview-toc" id="previewToc" aria-label="目录">
                     <div class="preview-toc-header">
-                        <span class="preview-toc-title">目录</span>
-                        <button class="preview-toc-close" id="tocCloseBtn" title="关闭目录">
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                                <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
-                            </svg>
-                        </button>
+                        <div class="preview-toc-title-row">
+                            <span class="preview-toc-title">目录</span>
+                            <button class="preview-toc-close" id="tocCloseBtn" title="关闭目录">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="preview-toc-filters" role="group" aria-label="按层级切换">
+                            <button type="button" class="toc-level-btn active" data-level="1" title="展开/折叠一级标题">H1</button>
+                            <button type="button" class="toc-level-btn active" data-level="2" title="展开/折叠二级标题">H2</button>
+                            <button type="button" class="toc-level-btn active" data-level="3" title="展开/折叠三级标题">H3</button>
+                            <button type="button" class="toc-level-btn active" data-level="other" title="展开/折叠其它级标题">其它</button>
+                        </div>
                     </div>
                     <div class="preview-toc-list" id="previewTocList">
                         <div class="preview-toc-empty">暂无目录</div>

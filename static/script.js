@@ -167,6 +167,11 @@ function setupEventListeners() {
     if (tocToggleBtn) tocToggleBtn.addEventListener('click', toggleToc);
     if (tocCloseBtn) tocCloseBtn.addEventListener('click', () => setTocVisible(false));
     if (previewContent) previewContent.addEventListener('scroll', onPreviewScroll, { passive: true });
+    // 目录栏层级切换按钮（H1/H2/H3/其它）
+    document.querySelectorAll('.toc-level-btn').forEach(btn => {
+        btn.addEventListener('click', () => toggleTocLevel(btn.dataset.level));
+    });
+    loadTocLevelFilters();
     // 默认折叠，选中文件后才显示
     loadTocState();
 
@@ -1670,8 +1675,53 @@ async function renderMathJax() {
 }
 
 // ===== 目录栏 (TOC) =====
-let _tocItems = []; // [{ id, el, btn }]
+let _tocItems = []; // [{ id, el, btn, level }]
 let _tocScrollRaf = 0;
+let _tocLevelFilters = { '1': true, '2': true, '3': true, 'other': true };
+// 点击目录项跳转时，暂停目录栏自身的自动滚动；scrollTo 为平滑动画，需维持一小段时间
+let _suppressTocScroll = false;
+let _suppressTocScrollTimer = 0;
+
+function _tocLevelKey(level) {
+    return level <= 3 ? String(level) : 'other';
+}
+
+function loadTocLevelFilters() {
+    try {
+        const raw = localStorage.getItem('tocLevelFilters');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            ['1', '2', '3', 'other'].forEach(k => {
+                if (typeof parsed[k] === 'boolean') _tocLevelFilters[k] = parsed[k];
+            });
+        }
+    } catch (e) {}
+    // 初始化按钮高亮
+    document.querySelectorAll('.toc-level-btn').forEach(btn => {
+        btn.classList.toggle('active', !!_tocLevelFilters[btn.dataset.level]);
+    });
+}
+
+function _saveTocLevelFilters() {
+    try { localStorage.setItem('tocLevelFilters', JSON.stringify(_tocLevelFilters)); } catch (e) {}
+}
+
+function applyTocLevelFilter() {
+    _tocItems.forEach(item => {
+        const key = _tocLevelKey(item.level);
+        item.btn.classList.toggle('hidden', !_tocLevelFilters[key]);
+    });
+    document.querySelectorAll('.toc-level-btn').forEach(btn => {
+        btn.classList.toggle('active', !!_tocLevelFilters[btn.dataset.level]);
+    });
+}
+
+function toggleTocLevel(key) {
+    if (!(key in _tocLevelFilters)) return;
+    _tocLevelFilters[key] = !_tocLevelFilters[key];
+    _saveTocLevelFilters();
+    applyTocLevelFilter();
+}
 
 function _slugify(text) {
     return (text || '')
@@ -1721,14 +1771,23 @@ function buildToc() {
             scrollHeadingIntoView(h);
         });
         fragment.appendChild(btn);
-        _tocItems.push({ id: uniqueId, el: h, btn });
+        _tocItems.push({ id: uniqueId, el: h, btn, level });
     });
     previewTocList.appendChild(fragment);
+    applyTocLevelFilter();
     updateTocActive();
 }
 
 function scrollHeadingIntoView(headingEl) {
     if (!headingEl || !previewContent) return;
+    // 抑制目录栏的自动滚动，避免跳转时目录栏跟着滚
+    _suppressTocScroll = true;
+    if (_suppressTocScrollTimer) clearTimeout(_suppressTocScrollTimer);
+    _suppressTocScrollTimer = setTimeout(() => {
+        _suppressTocScroll = false;
+        _suppressTocScrollTimer = 0;
+    }, 800);
+
     const containerTop = previewContent.getBoundingClientRect().top;
     const headingTop = headingEl.getBoundingClientRect().top;
     const target = previewContent.scrollTop + (headingTop - containerTop) - 8;
@@ -1759,11 +1818,13 @@ function updateTocActive() {
         item.btn.classList.toggle('active', i === activeIdx);
     });
     const activeBtn = _tocItems[activeIdx] && _tocItems[activeIdx].btn;
-    if (activeBtn && previewTocList) {
+    if (!_suppressTocScroll && activeBtn && previewTocList) {
         const btnRect = activeBtn.getBoundingClientRect();
         const listRect = previewTocList.getBoundingClientRect();
         if (btnRect.top < listRect.top || btnRect.bottom > listRect.bottom) {
-            activeBtn.scrollIntoView({ block: 'nearest' });
+            // 在目录栏容器内部滚动，避免影响外层页面滚动位置
+            const target = previewTocList.scrollTop + (btnRect.top - listRect.top) - 8;
+            previewTocList.scrollTo({ top: Math.max(0, target) });
         }
     }
 }
