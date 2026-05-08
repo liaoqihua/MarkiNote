@@ -18,12 +18,13 @@ MAX_TOOL_ITERATIONS = 15
 
 def _get_backup_manager():
     lib_dir = current_app.config['LIBRARY_FOLDER']
-    return BackupManager(BACKUPS_DIR, lib_dir)
+    return BackupManager(current_app.config['BACKUPS_DIR'], lib_dir)
 
 
 def _conversations_dir():
-    os.makedirs(CONVERSATIONS_DIR, exist_ok=True)
-    return CONVERSATIONS_DIR
+    path = current_app.config['CONVERSATIONS_DIR']
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def _load_conversation(conv_id):

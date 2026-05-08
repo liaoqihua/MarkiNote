@@ -1,6 +1,8 @@
 """Flask应用初始化"""
 from flask import Flask
 from app.config import Config
+from app.runtime import resource_path
+
 
 def create_app():
     """创建并配置Flask应用
@@ -8,9 +10,11 @@ def create_app():
     Returns:
         Flask: 配置好的Flask应用实例
     """
-    app = Flask(__name__, 
-                template_folder='../templates',
-                static_folder='../static')
+    app = Flask(
+        __name__,
+        template_folder=str(resource_path('templates')),
+        static_folder=str(resource_path('static')),
+    )
     
     # 加载配置
     app.config.from_object(Config)

@@ -162,40 +162,29 @@ Currently supports the following AI services (all OpenAI API-compatible, easily 
 ### Requirements
 
 - Python 3.8 or higher
-- pip package manager
+- [uv](https://docs.astral.sh/uv/) package manager (recommended)
 
 ### Installation
 
 1️⃣ **Clone the repository**
 ```bash
-git clone https://github.com/wink-wink-wink555/MarkiNote.git
+git clone https://github.com/liaoqihua/MarkiNote.git
 cd MarkiNote
 ```
 
-2️⃣ **Create a virtual environment (recommended)**
+2️⃣ **Install dependencies**
 ```bash
-python -m venv .venv
-
-# Windows PowerShell
-.venv\Scripts\activate
-
-# Linux/Mac
-source .venv/bin/activate
+uv sync --dev
 ```
 
-3️⃣ **Install dependencies**
+3️⃣ **Start the application**
 ```bash
-pip install -r requirements.txt
+uv run python main.py
 ```
 
-4️⃣ **Start the application**
-```bash
-python main.py
-```
+4️⃣ **Open your browser**
 
-5️⃣ **Open your browser**
-
-Visit `http://localhost:5000` and start using MarkiNote!
+The app opens your browser automatically. You can also manually visit `http://localhost:5000`.
 
 ### Configure the AI Assistant
 
@@ -216,6 +205,38 @@ Visit `http://localhost:5000` and start using MarkiNote!
 2. **Preview documents** — Click a file in the left panel for live rendering on the right
 3. **Manage files** — Right-click files/folders to rename, move, or delete
 
+### Data Directory & Logs
+
+Uploaded Markdown / TXT files are saved in the document library directory:
+
+- Source run: `lib/` under the project root
+- Packaged run: `lib/` under the system-recommended per-user app data directory
+  - Windows: `%LOCALAPPDATA%\MarkiNote\lib\`
+  - macOS: `~/Library/Application Support/MarkiNote/lib/`
+  - Linux: `~/.local/share/MarkiNote/lib/` or `$XDG_DATA_HOME/MarkiNote/lib/`
+- Custom location: set `MARKINOTE_DATA_DIR`; the library becomes `$MARKINOTE_DATA_DIR/lib/`
+
+AI conversations and backups are stored in the same data directory:
+
+```text
+.ai_conversations/   AI conversation history
+.ai_backups/         AI change backups
+```
+
+Logs are written to both the console and a log file. Default log file locations:
+
+```text
+Windows: %LOCALAPPDATA%\MarkiNote\logs\markinote.log
+macOS:   ~/Library/Logs/MarkiNote/markinote.log
+Linux:   ~/.local/state/MarkiNote/logs/markinote.log
+```
+
+You can override paths with environment variables:
+
+```bash
+MARKINOTE_DATA_DIR=/path/to/data MARKINOTE_LOG_DIR=/path/to/logs uv run python main.py
+```
+
 ### Using the AI Assistant
 
 1. **Open the AI panel** — Click the AI button in the top right
@@ -229,6 +250,46 @@ Visit `http://localhost:5000` and start using MarkiNote!
 
 ---
 
+## 📦 Packaging as an Executable
+
+This project is configured for `uv + PyInstaller`. Note: `uv build` creates a Python package, not an exe; the standalone executable is produced by PyInstaller.
+
+Linux / WSL packaging:
+
+```bash
+uv sync --dev
+uv run python scripts/build_exe.py
+```
+
+Output:
+
+```text
+dist/MarkiNote
+```
+
+To build a Windows `.exe`, run the packaging command from Windows PowerShell / CMD:
+
+```powershell
+uv sync --dev
+uv run python scripts/build_exe.py
+```
+
+Or:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+```
+
+Output:
+
+```text
+dist\MarkiNote.exe
+```
+
+See [PACKAGING.md](PACKAGING.md) for details.
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -236,6 +297,7 @@ MarkiNote/
 ├── app/                          # Flask backend
 │   ├── __init__.py              # App factory
 │   ├── config.py                # Configuration
+│   ├── runtime.py               # Runtime paths, resource lookup, and logging
 │   ├── routes/                  # Route modules
 │   │   ├── main_routes.py      # Main routes (page rendering)
 │   │   ├── library_routes.py   # Document library API (CRUD)
@@ -258,7 +320,13 @@ MarkiNote/
 │       └── html2canvas.min.js  # html2canvas
 ├── templates/
 │   └── index.html              # Single-page app template
-├── lib/                         # Document library (user documents stored here)
+├── lib/                         # Default document library for source runs
+├── scripts/                     # Packaging scripts
+│   ├── build_exe.py             # uv + PyInstaller packaging entrypoint
+│   └── build_windows.ps1        # Windows packaging helper
+├── MarkiNote.spec               # PyInstaller configuration
+├── PACKAGING.md                 # Packaging and runtime-path guide
+├── pyproject.toml               # uv project configuration
 ├── main.py                      # Entry point
 ├── requirements.txt             # Python dependencies
 ├── LICENSE                      # MIT License
