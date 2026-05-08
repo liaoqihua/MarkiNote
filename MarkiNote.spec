@@ -31,6 +31,8 @@ a = Analysis(
         'pygments',
         'requests',
         'duckduckgo_search',
+        'playwright',
+        'waitress',
     ],
     hookspath=[],
     hooksconfig={},

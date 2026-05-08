@@ -6,6 +6,7 @@ let selectedText = ''; // 存储选中的文本
 let isEditingSource = false; // 是否正在编辑源代码
 let allFiles = []; // 存储所有文件用于搜索
 let hasUnsavedChanges = false; // 是否有未保存的改动
+let selectedExportFiles = new Set(); // 多文档 PDF 导出选中的文件
 let _lastDirItemsHash = ''; // 目录内容指纹，用于静默刷新去重
 
 // DOM元素
@@ -21,6 +22,8 @@ const settingsBtn = document.getElementById('settingsBtn');
 const settingsModal = document.getElementById('settingsModal');
 const fileInput = document.getElementById('fileInput');
 const viewSourceBtn = document.getElementById('viewSourceBtn');
+const exportCurrentPdfBtn = document.getElementById('exportCurrentPdfBtn');
+const exportSelectedPdfBtn = document.getElementById('exportSelectedPdfBtn');
 const contextMenu = document.getElementById('contextMenu');
 const previewContextMenu = document.getElementById('previewContextMenu');
 const newSelectModal = document.getElementById('newSelectModal');
@@ -32,6 +35,12 @@ const moveModal = document.getElementById('moveModal');
 const renameModal = document.getElementById('renameModal');
 const searchBar = document.getElementById('searchBar');
 const searchInput = document.getElementById('searchInput');
+const previewToc = document.getElementById('previewToc');
+const previewTocList = document.getElementById('previewTocList');
+const tocToggleBtn = document.getElementById('tocToggleBtn');
+const tocCloseBtn = document.getElementById('tocCloseBtn');
+const previewPanel = document.querySelector('.preview-panel');
+const toggleAllSelectBtn = document.getElementById('toggleAllSelectBtn');
 
 // 存储当前文件的原始markdown内容
 let currentMarkdownSource = '';
@@ -91,6 +100,9 @@ function setupEventListeners() {
     settingsBtn.addEventListener('click', openSettingsModal);
     fileInput.addEventListener('change', handleFileUpload);
     viewSourceBtn.addEventListener('click', openSourceModal);
+    exportCurrentPdfBtn.addEventListener('click', exportCurrentFileToPdf);
+    exportSelectedPdfBtn.addEventListener('click', exportSelectedFilesToPdf);
+    if (toggleAllSelectBtn) toggleAllSelectBtn.addEventListener('click', toggleAllFileSelection);
     searchInput.addEventListener('input', handleSearch);
     
     // 点击其他地方关闭右键菜单
@@ -150,7 +162,14 @@ function setupEventListeners() {
     
     // 监听预览内容的右键菜单（选中文字）
     previewContent.addEventListener('contextmenu', showPreviewContextMenu);
-    
+
+    // 目录栏：切换显示/关闭，监听滚动高亮
+    if (tocToggleBtn) tocToggleBtn.addEventListener('click', toggleToc);
+    if (tocCloseBtn) tocCloseBtn.addEventListener('click', () => setTocVisible(false));
+    if (previewContent) previewContent.addEventListener('scroll', onPreviewScroll, { passive: true });
+    // 默认折叠，选中文件后才显示
+    loadTocState();
+
     // 加载保存的主题设置
     loadTheme();
 }
@@ -258,7 +277,10 @@ function displayFiles(items) {
         div.onclick = () => handleFileClick(item.path, item.type);
         div.oncontextmenu = (e) => showContextMenu(e, item.path, item.type);
         
+        const isExportSelected = selectedExportFiles.has(item.path);
+
         div.innerHTML = `
+            ${item.type === 'file' ? `<label class="file-select" title="选择用于批量导出 PDF" onclick="event.stopPropagation()"><input type="checkbox" ${isExportSelected ? 'checked' : ''} onchange="toggleExportSelection(event, '${item.path}')"></label>` : '<div class="file-select-placeholder"></div>'}
             <div class="file-icon">${icon}</div>
             <div class="file-info">
                 <div class="file-name">${item.name}</div>
@@ -282,6 +304,7 @@ function displayFiles(items) {
     // 一次性添加所有元素，只触发一次重绘
     fileList.innerHTML = '';
     fileList.appendChild(fragment);
+    updateToggleAllSelectBtn();
 }
 
 // 更新面包屑导航
@@ -322,8 +345,10 @@ function selectFile(path) {
         }
     });
     
-    // 启用查看源代码按钮
+    // 启用查看源代码和当前文档 PDF 导出按钮
     viewSourceBtn.disabled = false;
+    exportCurrentPdfBtn.disabled = false;
+    if (tocToggleBtn) tocToggleBtn.disabled = false;
 
     // 同步 AI 上下文
     if (typeof window.setAIContextFile === 'function') {
@@ -375,6 +400,9 @@ async function previewFile(path, silent = false) {
             // 触发MathJax渲染
             renderMathJax();
 
+            // 渲染完成后构建目录
+            buildToc();
+
             // 静默刷新时恢复滚动位置，避免阅读位置跳动
             if (silent) {
                 previewContent.scrollTop = scrollTop;
@@ -386,6 +414,139 @@ async function previewFile(path, silent = false) {
         if (!silent) {
             showError(t('preview_fail') + ': ' + error.message);
         }
+    }
+}
+
+function toggleExportSelection(event, path) {
+    event.stopPropagation();
+    if (event.target.checked) {
+        selectedExportFiles.add(path);
+    } else {
+        selectedExportFiles.delete(path);
+    }
+    updateExportSelectionState();
+}
+
+function updateExportSelectionState() {
+    const count = selectedExportFiles.size;
+    exportSelectedPdfBtn.disabled = count === 0;
+    exportSelectedPdfBtn.title = count > 0
+        ? `导出选中的 ${count} 个文档为 PDF`
+        : '导出选中文档为 PDF';
+    updateToggleAllSelectBtn();
+}
+
+// 获取当前文件列表中可选中的文件节点（只有文件，不包含文件夹）
+function _getVisibleFileItems() {
+    return Array.from(document.querySelectorAll('.file-item.file[data-path]'));
+}
+
+// 全选/全不选切换
+function toggleAllFileSelection() {
+    const items = _getVisibleFileItems();
+    if (!items.length) return;
+    const allSelected = items.every(it => selectedExportFiles.has(it.dataset.path));
+    const target = !allSelected; // 全部已选 → 取消全选；否则全选
+    items.forEach(it => {
+        const path = it.dataset.path;
+        if (!path) return;
+        if (target) selectedExportFiles.add(path);
+        else selectedExportFiles.delete(path);
+        const cb = it.querySelector('input[type="checkbox"]');
+        if (cb) cb.checked = target;
+    });
+    updateExportSelectionState();
+}
+
+// 根据当前状态刷新“全选/全不选”按钮的提示与图标
+function updateToggleAllSelectBtn() {
+    if (!toggleAllSelectBtn) return;
+    const items = _getVisibleFileItems();
+    toggleAllSelectBtn.disabled = items.length === 0;
+    const allSelected = items.length > 0 && items.every(it => selectedExportFiles.has(it.dataset.path));
+    toggleAllSelectBtn.classList.toggle('all-selected', allSelected);
+    const title = (typeof t === 'function')
+        ? (allSelected ? t('deselect_all') : t('select_all'))
+        : (allSelected ? '全不选' : '全选当前目录文件');
+    toggleAllSelectBtn.title = title;
+}
+
+function filenameFromDisposition(disposition, fallback) {
+    if (!disposition) return fallback;
+    const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match) {
+        try { return decodeURIComponent(utf8Match[1]); } catch (e) { return fallback; }
+    }
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    return match ? match[1] : fallback;
+}
+
+async function downloadPdfResponse(response, fallbackName) {
+    const contentType = response.headers.get('Content-Type') || '';
+    if (!response.ok) {
+        if (contentType.includes('application/json')) {
+            const data = await response.json();
+            throw new Error(data.error || 'PDF 导出失败');
+        }
+        throw new Error('PDF 导出失败');
+    }
+
+    const blob = await response.blob();
+    const filename = filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackName);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+}
+
+async function exportFileToPdf(path) {
+    try {
+        showSuccess('正在生成 PDF...');
+        const response = await fetch('/api/export/pdf', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ path })
+        });
+        await downloadPdfResponse(response, `${path.split('/').pop().replace(/\.[^.]+$/, '') || 'MarkiNote'}.pdf`);
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+async function exportCurrentFileToPdf() {
+    if (!selectedFile) {
+        showError('请先选择一个文档');
+        return;
+    }
+    await exportFileToPdf(selectedFile);
+}
+
+async function exportSelectedFilesToPdf() {
+    const paths = Array.from(selectedExportFiles);
+    if (paths.length === 0) {
+        showError('请先勾选要导出的文档');
+        return;
+    }
+
+    try {
+        const mergeToOne = paths.length === 1 || confirm(
+            `批量导出 ${paths.length} 个文档：\n\n点击“确定”合并导出为一个 PDF。\n点击“取消”按各个文件分别导出，并打包为 ZIP。`
+        );
+        showSuccess(mergeToOne
+            ? `正在合并导出 ${paths.length} 个文档...`
+            : `正在分别导出 ${paths.length} 个文档...`);
+        const response = await fetch(mergeToOne ? '/api/export/pdf/batch' : '/api/export/pdf/batch/separate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ paths })
+        });
+        await downloadPdfResponse(response, mergeToOne ? 'MarkiNote-Export.pdf' : 'MarkiNote-PDFs.zip');
+    } catch (error) {
+        showError(error.message);
     }
 }
 
@@ -556,10 +717,18 @@ async function contextMenuAction(action) {
             // 打开移动文件模态框
             openMoveModal(path);
             break;
+
+        case 'exportPdf':
+            if (type === 'file') {
+                await exportFileToPdf(path);
+            } else {
+                showError('只能导出文件，不能直接导出文件夹');
+            }
+            break;
             
         case 'delete':
             if (confirm(t('delete_confirm', {name: path.split('/').pop()}))) {
-                await deleteItem(path);
+                await deleteItem(path, type);
             }
             break;
     }
@@ -702,7 +871,7 @@ async function moveItem(source, target) {
 }
 
 // 删除文件/文件夹
-async function deleteItem(path) {
+async function deleteItem(path, type = 'file') {
     try {
         const response = await fetch('/api/library/delete', {
             method: 'POST',
@@ -716,6 +885,20 @@ async function deleteItem(path) {
         
         if (data.success) {
             showSuccess(t('delete_success'));
+
+            // 删除文件/文件夹后，清理批量 PDF 导出的勾选状态，避免保留已不存在的路径
+            if (window.MarkiNoteSelectionState) {
+                selectedExportFiles = new Set(
+                    window.MarkiNoteSelectionState.pruneSelectionAfterDelete(
+                        selectedExportFiles,
+                        path,
+                        type
+                    )
+                );
+            } else {
+                selectedExportFiles.delete(path);
+            }
+            updateExportSelectionState();
             
             // 如果删除的是当前选中的文件，清空预览
             if (selectedFile === path) {
@@ -730,6 +913,7 @@ async function deleteItem(path) {
                 previewTitle.textContent = t('select_file_preview');
                 currentFilePath.textContent = '';
                 viewSourceBtn.disabled = true;
+                exportCurrentPdfBtn.disabled = true;
             }
             
             loadLibrary(currentPath);
@@ -1233,6 +1417,12 @@ function loadSidebarState() {
     if (sidebarToggleBtn) {
         sidebarToggleBtn.addEventListener('click', toggleSidebar);
     }
+
+    // 侧边栏内部的收起按钮，也复用同一个切换函数
+    const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
+    if (sidebarCollapseBtn) {
+        sidebarCollapseBtn.addEventListener('click', toggleSidebar);
+    }
 }
 
 // ===== 设置弹窗功能 =====
@@ -1477,6 +1667,125 @@ async function renderMathJax() {
     } else {
         console.warn('⚠️ MathJax不可用或未正确加载');
     }
+}
+
+// ===== 目录栏 (TOC) =====
+let _tocItems = []; // [{ id, el, btn }]
+let _tocScrollRaf = 0;
+
+function _slugify(text) {
+    return (text || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/[\s]+/g, '-')
+        .replace(/[^\p{L}\p{N}\-_]+/gu, '')
+        .replace(/^-+|-+$/g, '') || 'section';
+}
+
+function buildToc() {
+    if (!previewTocList || !previewContent) return;
+    const headings = previewContent.querySelectorAll('.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6');
+    previewTocList.innerHTML = '';
+    _tocItems = [];
+
+    if (!headings.length) {
+        const empty = document.createElement('div');
+        empty.className = 'preview-toc-empty';
+        empty.textContent = (typeof t === 'function') ? t('toc_empty') : '暂无目录';
+        previewTocList.appendChild(empty);
+        return;
+    }
+
+    const usedIds = new Set();
+    const fragment = document.createDocumentFragment();
+    headings.forEach((h, idx) => {
+        let id = h.id;
+        if (!id) id = _slugify(h.textContent) || ('section-' + idx);
+        let uniqueId = id;
+        let n = 1;
+        while (usedIds.has(uniqueId)) {
+            uniqueId = id + '-' + (++n);
+        }
+        usedIds.add(uniqueId);
+        h.id = uniqueId;
+
+        const level = parseInt(h.tagName.substring(1), 10) || 1;
+        const btn = document.createElement('a');
+        btn.className = 'preview-toc-item level-' + level;
+        btn.href = '#' + uniqueId;
+        btn.textContent = (h.textContent || '').trim();
+        btn.title = btn.textContent;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            scrollHeadingIntoView(h);
+        });
+        fragment.appendChild(btn);
+        _tocItems.push({ id: uniqueId, el: h, btn });
+    });
+    previewTocList.appendChild(fragment);
+    updateTocActive();
+}
+
+function scrollHeadingIntoView(headingEl) {
+    if (!headingEl || !previewContent) return;
+    const containerTop = previewContent.getBoundingClientRect().top;
+    const headingTop = headingEl.getBoundingClientRect().top;
+    const target = previewContent.scrollTop + (headingTop - containerTop) - 8;
+    previewContent.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+}
+
+function onPreviewScroll() {
+    if (_tocScrollRaf) return;
+    _tocScrollRaf = requestAnimationFrame(() => {
+        _tocScrollRaf = 0;
+        updateTocActive();
+    });
+}
+
+function updateTocActive() {
+    if (!_tocItems.length || !previewContent) return;
+    const containerTop = previewContent.getBoundingClientRect().top;
+    let activeIdx = 0;
+    for (let i = 0; i < _tocItems.length; i++) {
+        const top = _tocItems[i].el.getBoundingClientRect().top - containerTop;
+        if (top - 24 <= 0) {
+            activeIdx = i;
+        } else {
+            break;
+        }
+    }
+    _tocItems.forEach((item, i) => {
+        item.btn.classList.toggle('active', i === activeIdx);
+    });
+    const activeBtn = _tocItems[activeIdx] && _tocItems[activeIdx].btn;
+    if (activeBtn && previewTocList) {
+        const btnRect = activeBtn.getBoundingClientRect();
+        const listRect = previewTocList.getBoundingClientRect();
+        if (btnRect.top < listRect.top || btnRect.bottom > listRect.bottom) {
+            activeBtn.scrollIntoView({ block: 'nearest' });
+        }
+    }
+}
+
+function setTocVisible(visible) {
+    if (!previewPanel) return;
+    previewPanel.classList.toggle('toc-collapsed', !visible);
+    try { localStorage.setItem('tocVisible', visible ? '1' : '0'); } catch (e) {}
+    if (visible) updateTocActive();
+}
+
+function toggleToc() {
+    if (!previewPanel) return;
+    const visible = previewPanel.classList.contains('toc-collapsed');
+    setTocVisible(visible);
+}
+
+function loadTocState() {
+    if (!previewPanel) return;
+    const stored = (function () { try { return localStorage.getItem('tocVisible'); } catch (e) { return null; } })();
+    const visible = stored === '1';
+    previewPanel.classList.toggle('toc-collapsed', !visible);
 }
 
 // 初始化Mermaid

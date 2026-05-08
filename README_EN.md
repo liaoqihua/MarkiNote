@@ -97,6 +97,8 @@ Currently supports the following AI services (all OpenAI API-compatible, easily 
 - ✅ Mermaid diagrams (flowcharts, sequence diagrams, Gantt charts, etc.)
 - ✅ Tables, lists, blockquotes — full support
 - ✅ View / Edit source code
+- ✅ Export a single document to PDF
+- ✅ Select any number of documents and export them as one merged PDF or separate PDFs in a ZIP file
 - ✅ Fullscreen reading mode
 
 ### 🤖 AI Assistant
@@ -203,7 +205,8 @@ The app opens your browser automatically. You can also manually visit `http://lo
 
 1. **Upload files** — Click the "Upload" button in the sidebar
 2. **Preview documents** — Click a file in the left panel for live rendering on the right
-3. **Manage files** — Right-click files/folders to rename, move, or delete
+3. **Export PDF** — Click "Export PDF" in the preview toolbar for the current document, or select any number of documents in the left panel and click the bottom PDF button. Batch export can either merge all documents into one PDF or export one PDF per document in a ZIP file
+4. **Manage files** — Right-click files/folders to rename, move, or delete
 
 ### Data Directory & Logs
 
@@ -235,6 +238,26 @@ You can override paths with environment variables:
 
 ```bash
 MARKINOTE_DATA_DIR=/path/to/data MARKINOTE_LOG_DIR=/path/to/logs uv run python main.py
+```
+
+Startup arguments can control whether the browser opens automatically:
+
+```bash
+uv run python main.py --open-browser   # Open browser after startup
+uv run python main.py --no-browser     # Do not open browser after startup
+uv run python main.py --host 127.0.0.1 --port 8080
+```
+
+PDF export uses a real Chromium / Chrome / Edge browser to render and print, so Mermaid diagrams, MathJax formulas, and CSS match the live browser preview. Exported PDFs automatically include a front-page table of contents based on Markdown headings and enable PDF outline/bookmarks. If Chrome/Edge is not installed, install Playwright Chromium:
+
+```bash
+uv run playwright install chromium
+```
+
+You can also specify the browser executable explicitly:
+
+```bash
+MARKINOTE_CHROMIUM_EXECUTABLE=/path/to/chrome uv run python main.py
 ```
 
 ### Using the AI Assistant
@@ -301,10 +324,12 @@ MarkiNote/
 │   ├── routes/                  # Route modules
 │   │   ├── main_routes.py      # Main routes (page rendering)
 │   │   ├── library_routes.py   # Document library API (CRUD)
+│   │   ├── pdf_routes.py       # PDF export API
 │   │   └── ai_routes.py        # AI assistant API (chat/backup/rollback)
 │   └── utils/                   # Utility modules
 │       ├── file_utils.py       # File operations
 │       ├── markdown_utils.py   # Markdown rendering
+│       ├── pdf_utils.py        # Browser-rendered PDF export
 │       ├── ai_provider.py      # AI provider adapter
 │       ├── ai_tools.py         # AI tool definitions & execution
 │       └── ai_backup.py        # Backup & rollback management
@@ -341,8 +366,9 @@ MarkiNote/
 - **Flask 3.0.0** — Web framework
 - **markdown + BeautifulSoup4** — Markdown parsing & HTML processing
 - **Pygments** — Code syntax highlighting
-- **requests** — AI API calls & web scraping
-- **OpenAI-compatible API** — Supports DeepSeek / Moonshot and more
+- **requests** — AI API calls and web fetching
+- **Playwright** — Render and export PDFs with real Chromium / Chrome / Edge
+- **OpenAI-compatible APIs** — DeepSeek / Moonshot and other providers
 
 ### Frontend
 - **Vanilla JavaScript** — Zero framework dependencies

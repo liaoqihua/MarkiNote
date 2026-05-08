@@ -13,6 +13,8 @@ dependencies = [
     "Pygments==2.17.2",
     "requests>=2.31.0",
     "duckduckgo-search>=6.0.0",
+    "playwright>=1.48.0",
+    "waitress>=3.0.0",
 ]
 
 [dependency-groups]

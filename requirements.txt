@@ -8,7 +8,7 @@ certifi==2026.4.22
     # via requests
 charset-normalizer==3.4.7
     # via requests
-click==8.3.3
+click==8.1.8
     # via
     #   duckduckgo-search
     #   flask
@@ -16,6 +16,8 @@ duckduckgo-search==6.4.2
     # via markinote (pyproject.toml)
 flask==3.0.0
     # via markinote (pyproject.toml)
+greenlet==3.5.0
+    # via playwright
 idna==3.13
     # via requests
 itsdangerous==2.2.0
@@ -30,16 +32,24 @@ markupsafe==3.0.3
     # via
     #   jinja2
     #   werkzeug
+playwright==1.59.0
+    # via markinote (pyproject.toml)
 primp==1.2.3
     # via duckduckgo-search
+pyee==13.0.1
+    # via playwright
 pygments==2.17.2
     # via markinote (pyproject.toml)
 requests==2.33.1
     # via markinote (pyproject.toml)
 soupsieve==2.8.3
     # via beautifulsoup4
+typing-extensions==4.15.0
+    # via pyee
 urllib3==2.7.0
     # via requests
+waitress>=3.0.0
+    # via markinote (pyproject.toml)
 werkzeug==3.0.1
     # via
     #   markinote (pyproject.toml)

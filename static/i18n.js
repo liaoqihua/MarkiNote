@@ -48,7 +48,7 @@
             name_empty: '名称不能为空', name_same: '新名称与原名称相同',
             source_not_found: '在源代码中未找到该文本',
             more_actions: '更多操作', copy_code: '复制代码', copy_latex: '复制LaTeX代码',
-            export_jpg: '导出为JPG', copy_source: '复制源代码',
+            export_jpg: '导出为JPG', export_pdf: '导出为 PDF', copy_source: '复制源代码',
             just_now: '刚刚', minutes_ago: '{n} 分钟前', hours_ago: '{n} 小时前', days_ago: '{n} 天前',
             collapse_sidebar: '收起/展开侧边栏',
             ai_panel_title: 'AI 助手', new_chat: '新对话', chat_history: '对话历史',
@@ -88,6 +88,8 @@
             move_fail: '移动失败', delete_fail: '删除失败', save_fail: '保存失败',
             load_list_fail: '加载文件列表失败', no_move_target: '没有可移动的目标文件夹',
             load_folder_fail: '加载文件夹列表失败',
+            toc: '目录', toc_empty: '暂无目录', toc_close: '关闭目录', toc_toggle: '切换目录',
+            select_all: '全选当前目录文件', deselect_all: '取消全选',
         },
         'en': {
             loading: 'Loading...', cancel: 'Cancel', confirm: 'OK', delete_word: 'Delete', rename: 'Rename',
@@ -134,7 +136,7 @@
             name_empty: 'Name cannot be empty', name_same: 'New name is the same as the original',
             source_not_found: 'Text not found in source code',
             more_actions: 'More', copy_code: 'Copy code', copy_latex: 'Copy LaTeX',
-            export_jpg: 'Export as JPG', copy_source: 'Copy source',
+            export_jpg: 'Export as JPG', export_pdf: 'Export as PDF', copy_source: 'Copy source',
             just_now: 'Just now', minutes_ago: '{n} min ago', hours_ago: '{n} hr ago', days_ago: '{n} days ago',
             collapse_sidebar: 'Toggle sidebar',
             ai_panel_title: 'AI Assistant', new_chat: 'New Chat', chat_history: 'History',
@@ -174,6 +176,8 @@
             move_fail: 'Move failed', delete_fail: 'Delete failed', save_fail: 'Save failed',
             load_list_fail: 'Failed to load file list', no_move_target: 'No available target folders',
             load_folder_fail: 'Failed to load folder list',
+            toc: 'Contents', toc_empty: 'No contents', toc_close: 'Close contents', toc_toggle: 'Toggle contents',
+            select_all: 'Select all files in current folder', deselect_all: 'Deselect all',
         },
         'fr': {
             loading: 'Chargement...', cancel: 'Annuler', confirm: 'OK', delete_word: 'Supprimer', rename: 'Renommer',
@@ -218,7 +222,7 @@
             name_empty: 'Le nom ne peut pas être vide', name_same: 'Le nom est identique',
             source_not_found: 'Texte non trouvé dans le code source',
             more_actions: 'Plus', copy_code: 'Copier le code', copy_latex: 'Copier LaTeX',
-            export_jpg: 'Exporter en JPG', copy_source: 'Copier la source',
+            export_jpg: 'Exporter en JPG', export_pdf: 'Exporter en PDF', copy_source: 'Copier la source',
             just_now: "À l'instant", minutes_ago: 'il y a {n} min', hours_ago: 'il y a {n} h', days_ago: 'il y a {n} j',
             collapse_sidebar: 'Basculer la barre latérale',
             ai_panel_title: 'Assistant IA', new_chat: 'Nouvelle conversation', chat_history: 'Historique',
@@ -258,6 +262,8 @@
             move_fail: 'Échec du déplacement', delete_fail: 'Échec de la suppression', save_fail: "Échec de l'enregistrement",
             load_list_fail: 'Échec du chargement de la liste', no_move_target: 'Aucun dossier cible disponible',
             load_folder_fail: 'Échec du chargement des dossiers',
+            toc: 'Sommaire', toc_empty: 'Aucun sommaire', toc_close: 'Fermer le sommaire', toc_toggle: 'Afficher/masquer le sommaire',
+            select_all: 'Tout sélectionner', deselect_all: 'Tout désélectionner',
         },
         'ja': {
             loading: '読み込み中...', cancel: 'キャンセル', confirm: 'OK', delete_word: '削除', rename: '名前変更',
@@ -302,7 +308,7 @@
             name_empty: '名前を入力してください', name_same: '同じ名前です',
             source_not_found: 'テキストが見つかりません',
             more_actions: 'その他', copy_code: 'コードをコピー', copy_latex: 'LaTeXをコピー',
-            export_jpg: 'JPGとして保存', copy_source: 'ソースをコピー',
+            export_jpg: 'JPGとして保存', export_pdf: 'PDFとして保存', copy_source: 'ソースをコピー',
             just_now: 'たった今', minutes_ago: '{n}分前', hours_ago: '{n}時間前', days_ago: '{n}日前',
             collapse_sidebar: 'サイドバー切替',
             ai_panel_title: 'AIアシスタント', new_chat: '新規チャット', chat_history: '履歴',
@@ -342,6 +348,8 @@
             move_fail: '移動失敗', delete_fail: '削除失敗', save_fail: '保存失敗',
             load_list_fail: 'ファイル一覧の読み込み失敗', no_move_target: '移動先フォルダがありません',
             load_folder_fail: 'フォルダ一覧の読み込み失敗',
+            toc: '目次', toc_empty: '目次なし', toc_close: '目次を閉じる', toc_toggle: '目次の表示切替',
+            select_all: 'すべて選択', deselect_all: '選択解除',
         }
     };
 
@@ -368,11 +376,23 @@
         _a('#newBtn', 'title', 'new_title');
         _a('#searchInput', 'placeholder', 'search_placeholder');
         _a('#sidebarToggleBtn', 'title', 'collapse_sidebar');
+        _a('#sidebarCollapseBtn', 'title', 'collapse_sidebar');
+        if (typeof updateToggleAllSelectBtn === 'function') updateToggleAllSelectBtn();
         _a('#aiToggleBtn', 'title', 'ai_assistant');
 
         // View source button text
         const vsSpan = document.querySelector('#viewSourceBtn .btn-text');
         if (vsSpan) vsSpan.textContent = t('view_source');
+
+        // TOC toggle button
+        _a('#tocToggleBtn', 'title', 'toc_toggle');
+        const tocSpan = document.querySelector('#tocToggleBtn .btn-text');
+        if (tocSpan) tocSpan.textContent = t('toc');
+        _a('#tocCloseBtn', 'title', 'toc_close');
+        const tocTitleEl = document.querySelector('#previewToc .preview-toc-title');
+        if (tocTitleEl) tocTitleEl.textContent = t('toc');
+        const tocEmptyEl = document.querySelector('#previewTocList .preview-toc-empty');
+        if (tocEmptyEl) tocEmptyEl.textContent = t('toc_empty');
 
         // Preview welcome
         const pw = document.querySelector('.preview-content .welcome-message');
@@ -442,7 +462,8 @@
         const cmItems = document.querySelectorAll('#contextMenu .context-menu-item');
         if (cmItems[0]) { const t0 = cmItems[0].lastChild; if (t0) t0.textContent = '\n            ' + t('rename') + '\n        '; }
         if (cmItems[1]) { const t1 = cmItems[1].lastChild; if (t1) t1.textContent = '\n            ' + t('move_to') + '\n        '; }
-        if (cmItems[2]) { const t2 = cmItems[2].lastChild; if (t2) t2.textContent = '\n            ' + t('delete_word') + '\n        '; }
+        if (cmItems[2]) { const t2 = cmItems[2].lastChild; if (t2) t2.textContent = '\n            ' + t('export_pdf') + '\n        '; }
+        if (cmItems[3]) { const t3 = cmItems[3].lastChild; if (t3) t3.textContent = '\n            ' + t('delete_word') + '\n        '; }
 
         const pcmItems = document.querySelectorAll('#previewContextMenu .context-menu-item');
         if (pcmItems[0]) { const t0 = pcmItems[0].lastChild; if (t0) t0.textContent = '\n            ' + t('copy') + '\n        '; }

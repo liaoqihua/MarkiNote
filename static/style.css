@@ -329,6 +329,13 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+/* 全选按钮的“已全选”高亮态 */
+.icon-btn-round.all-selected {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+}
+
 /* 搜索栏 */
 .search-bar {
     padding: 12px 20px;
@@ -612,6 +619,132 @@ body.dark-mode .file-item.search-match {
     -webkit-user-select: text;
     -moz-user-select: text;
     -ms-user-select: text;
+}
+
+/* ===== 预览区主体：目录栏 + 内容 ===== */
+.preview-body {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.preview-body .preview-content {
+    flex: 1;
+    min-width: 0;
+}
+
+/* 目录栏 */
+.preview-toc {
+    width: 240px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border-color);
+    background: var(--sidebar-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width 0.25s ease, opacity 0.25s ease;
+}
+
+.preview-panel.toc-collapsed .preview-toc {
+    width: 0;
+    opacity: 0;
+    pointer-events: none;
+    border-right-width: 0;
+}
+
+.preview-toc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.preview-toc-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.preview-toc-close {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, color 0.2s;
+}
+
+.preview-toc-close:hover {
+    background: var(--hover-bg);
+    color: var(--text-color);
+}
+
+.preview-toc-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+}
+
+.preview-toc-empty {
+    padding: 20px 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-align: center;
+}
+
+.preview-toc-item {
+    display: block;
+    padding: 4px 16px 4px 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.preview-toc-item:hover {
+    background: var(--hover-bg);
+    color: var(--text-color);
+}
+
+.preview-toc-item.active {
+    color: var(--primary-color);
+    border-left-color: var(--primary-color);
+    background: var(--selected-bg);
+    font-weight: 500;
+}
+
+.preview-toc-item.level-1 { padding-left: 16px; font-weight: 600; color: var(--text-color); }
+.preview-toc-item.level-2 { padding-left: 28px; }
+.preview-toc-item.level-3 { padding-left: 40px; }
+.preview-toc-item.level-4 { padding-left: 52px; }
+.preview-toc-item.level-5 { padding-left: 64px; font-size: 12px; }
+.preview-toc-item.level-6 { padding-left: 76px; font-size: 12px; }
+
+/* 在预览内容中，满足预留目录跳转的滚动偏移，避免光标被 header 遮挡 */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+    scroll-margin-top: 16px;
 }
 
 .welcome-message {
@@ -1472,3 +1605,30 @@ body.editing-source #sourceCloseBtn {
         flex-direction: column;
     }
 }
+/* ===== PDF 导出选择 ===== */
+.file-select,
+.file-select-placeholder {
+    width: 22px;
+    min-width: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-select input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+}
+
+.file-item.folder .file-select-placeholder {
+    opacity: 0;
+}
+
+.footer-btn:disabled,
+.preview-actions .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+

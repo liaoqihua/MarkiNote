@@ -14,6 +14,12 @@
 ```bash
 uv sync --dev
 uv run python main.py
+
+# 不自动打开浏览器
+uv run python main.py --no-browser
+
+# 指定端口并自动打开浏览器
+uv run python main.py --port 8080 --open-browser
 ```
 
 启动后访问：
@@ -117,6 +123,35 @@ $env:MARKINOTE_LOG_DIR="D:\MarkiNote_Logs"
 .\dist\MarkiNote.exe
 ```
 
+## PDF 导出浏览器依赖
+
+PDF 导出使用真实 Chromium / Chrome / Edge 渲染页面并打印 PDF，用于保证 Mermaid、MathJax、CSS 等效果与浏览器预览一致。导出的 PDF 会根据 Markdown 标题自动生成首页目录，并启用 PDF outline/bookmarks。
+
+优先使用系统浏览器：
+
+- Windows：Microsoft Edge 或 Chrome
+- macOS：Chrome / Chromium / Edge
+- Linux：Chrome / Chromium / Edge
+
+如果系统没有可用浏览器，可以安装 Playwright Chromium：
+
+```bash
+uv run playwright install chromium
+```
+
+也可以显式指定浏览器可执行文件：
+
+```bash
+MARKINOTE_CHROMIUM_EXECUTABLE=/path/to/chrome uv run python main.py
+```
+
+Windows PowerShell：
+
+```powershell
+$env:MARKINOTE_CHROMIUM_EXECUTABLE="C:\Program Files\Google\Chrome\Application\chrome.exe"
+.\dist\MarkiNote.exe
+```
+
 ## 常用环境变量
 
 ```text
@@ -126,6 +161,8 @@ MARKINOTE_DEBUG      默认 0，设为 1 开启 Flask debug
 MARKINOTE_NO_BROWSER 默认空，设为 1 禁止自动打开浏览器
 MARKINOTE_DATA_DIR   指定外部数据目录
 MARKINOTE_LOG_DIR    指定外部日志目录
+MARKINOTE_CHROMIUM_EXECUTABLE 指定 PDF 导出使用的 Chrome/Edge/Chromium 路径
+MARKINOTE_BROWSER_CHANNELS    PDF 导出浏览器 channel 探测顺序，默认 msedge,chrome,chromium
 ```
 
 例子：
