@@ -30,6 +30,7 @@ const fileInput = document.getElementById('fileInput');
 const viewSourceBtn = document.getElementById('viewSourceBtn');
 const exportCurrentPdfBtn = document.getElementById('exportCurrentPdfBtn');
 const exportSelectedPdfBtn = document.getElementById('exportSelectedPdfBtn');
+const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 const contextMenu = document.getElementById('contextMenu');
 const previewContextMenu = document.getElementById('previewContextMenu');
 const newSelectModal = document.getElementById('newSelectModal');
@@ -119,6 +120,7 @@ function setupEventListeners() {
     editorTextarea.addEventListener('input', onEditorInput);
     exportCurrentPdfBtn.addEventListener('click', exportCurrentFileToPdf);
     exportSelectedPdfBtn.addEventListener('click', exportSelectedFilesToPdf);
+    if (deleteSelectedBtn) deleteSelectedBtn.addEventListener('click', deleteSelectedItems);
     if (toggleAllSelectBtn) toggleAllSelectBtn.addEventListener('click', toggleAllFileSelection);
     searchInput.addEventListener('input', handleSearch);
     
@@ -497,6 +499,14 @@ function updateExportSelectionState() {
     exportSelectedPdfBtn.title = fileCount > 0
         ? `导出选中的 ${fileCount} 个文档为 PDF`
         : '导出选中文档为 PDF';
+    // 更新删除选中按钮状态（文件+文件夹都算）
+    const itemCount = selectedExportFiles.size;
+    if (deleteSelectedBtn) {
+        deleteSelectedBtn.disabled = itemCount === 0;
+        deleteSelectedBtn.title = itemCount > 0
+            ? (typeof t === 'function' ? t('delete_selected_title', { count: itemCount }) : `删除选中文档（${itemCount} 个）`)
+            : (typeof t === 'function' ? t('delete_selected') : '删除选中文档');
+    }
     updateToggleAllSelectBtn();
 }
 
@@ -1003,6 +1013,94 @@ async function deleteItem(path, type = 'file') {
     } catch (error) {
         showError(t('delete_fail') + ': ' + error.message);
     }
+}
+
+// 批量删除选中的文件/文件夹
+async function deleteSelectedItems() {
+    if (selectedExportFiles.size === 0) return;
+
+    const paths = Array.from(selectedExportFiles);
+    const count = paths.length;
+
+    const confirmMsg = typeof t === 'function'
+        ? t('batch_delete_confirm', { count })
+        : `确定要删除选中的 ${count} 项吗？此操作不可恢复。`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const response = await fetch('/api/library/delete/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths })
+        });
+
+        const data = await response.json();
+
+        if (data.deleted > 0) {
+            // 清理勾选状态
+            if (window.MarkiNoteSelectionState) {
+                for (const p of paths) {
+                    const itemType = _detectItemType(p);
+                    selectedExportFiles = new Set(
+                        window.MarkiNoteSelectionState.pruneSelectionAfterDelete(
+                            selectedExportFiles, p, itemType
+                        )
+                    );
+                }
+            } else {
+                selectedExportFiles.clear();
+            }
+            updateExportSelectionState();
+
+            // 如果删除的包含当前选中的文件，清空预览
+            const selectedDeleted = selectedFile && (
+                paths.includes(selectedFile)
+                || paths.some(p => {
+                    const el = fileList.querySelector(`.file-item[data-path="${_escapeSelector(p)}"]`);
+                    return el && el.dataset.type === 'folder' && selectedFile.startsWith(p + '/');
+                })
+            );
+            if (selectedDeleted) {
+                selectedFile = null;
+                currentMarkdownSource = '';
+                previewContent.innerHTML = `
+                    <div class="welcome-message">
+                        <h3>${t('file_deleted')}</h3>
+                        <p>${t('select_other_file')}</p>
+                    </div>
+                `;
+                previewTitle.textContent = t('select_file_preview');
+                currentFilePath.textContent = '';
+                viewSourceBtn.disabled = true;
+                toggleEditBtn.disabled = true;
+                exportCurrentPdfBtn.disabled = true;
+            }
+
+            showSuccess(typeof t === 'function'
+                ? t('batch_delete_success', { count: data.deleted })
+                : `成功删除 ${data.deleted} 项`);
+            loadLibrary(currentPath);
+        }
+
+        if (data.failed > 0) {
+            const errDetails = data.errors.map(e => `${e.path}: ${e.error}`).join('\n');
+            showError((typeof t === 'function' ? t('batch_delete_fail') : '批量删除失败')
+                + `：${data.failed} 项失败\n${errDetails}`);
+        }
+    } catch (error) {
+        showError((typeof t === 'function' ? t('batch_delete_fail') : '批量删除失败')
+            + ': ' + error.message);
+    }
+}
+
+// 通过路径判断文件/文件夹类型
+function _detectItemType(path) {
+    const el = fileList.querySelector(`.file-item[data-path="${_escapeSelector(path)}"]`);
+    if (el) {
+        return el.dataset.type || 'file';
+    }
+    return 'file';
 }
 
 // ===== 重命名功能 =====

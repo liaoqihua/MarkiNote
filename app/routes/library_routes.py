@@ -319,6 +319,54 @@ def move_items_batch():
     })
 
 
+@library_bp.route('/api/library/delete/batch', methods=['POST'])
+def delete_items_batch():
+    """批量删除文件/文件夹"""
+    data = request.get_json()
+    paths = data.get('paths', [])
+
+    if not paths or not isinstance(paths, list):
+        return jsonify({'error': '路径列表不能为空'}), 400
+    if len(paths) == 0:
+        return jsonify({'error': '路径列表为空'}), 400
+
+    base_path = current_app.config['LIBRARY_FOLDER']
+    results = []
+    errors = []
+
+    for item_path in paths:
+        full_path = os.path.join(base_path, item_path)
+
+        if not os.path.abspath(full_path).startswith(os.path.abspath(base_path)):
+            errors.append({'path': item_path, 'error': '非法路径'})
+            continue
+
+        if not os.path.exists(full_path):
+            errors.append({'path': item_path, 'error': '文件或文件夹不存在'})
+            continue
+
+        try:
+            if os.path.isfile(full_path):
+                os.remove(full_path)
+            elif os.path.isdir(full_path):
+                shutil.rmtree(full_path)
+            else:
+                errors.append({'path': item_path, 'error': '未知类型'})
+                continue
+            results.append({'path': item_path})
+        except Exception as e:
+            errors.append({'path': item_path, 'error': str(e)})
+
+    return jsonify({
+        'success': len(errors) == 0,
+        'deleted': len(results),
+        'failed': len(errors),
+        'results': results,
+        'errors': errors,
+        'message': f'成功删除 {len(results)} 项' + (f'，{len(errors)} 项失败' if errors else '')
+    })
+
+
 @library_bp.route('/api/library/read', methods=['GET'])
 def read_file():
     """读取文件内容用于预览"""
