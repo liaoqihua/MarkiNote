@@ -899,6 +899,39 @@ body.dark-mode .file-item.search-match {
     margin-left: auto;
 }
 
+/* 保存指示器 */
+.preview-editor-save-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--success-color);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.preview-editor-save-indicator.show {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.preview-editor-save-indicator svg {
+    flex-shrink: 0;
+}
+
+@keyframes save-check-pop {
+    0% { opacity: 0; transform: scale(0.5); }
+    50% { opacity: 1; transform: scale(1.2); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.preview-editor-save-indicator.pop {
+    animation: save-check-pop 0.4s ease;
+}
+
 .preview-editor-actions .btn-sm {
     padding: 4px 10px;
     font-size: 12px;

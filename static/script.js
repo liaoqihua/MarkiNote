@@ -54,6 +54,8 @@ const editorTextarea = document.getElementById('editorTextarea');
 const editorSaveBtn = document.getElementById('editorSaveBtn');
 const editorCancelBtn = document.getElementById('editorCancelBtn');
 const editorSwapBtn = document.getElementById('editorSwapBtn');
+const saveIndicator = document.getElementById('saveIndicator');
+let _saveIndicatorTimer = null;
 
 // 存储当前文件的原始markdown内容
 let currentMarkdownSource = '';
@@ -1649,6 +1651,33 @@ function renderLivePreview() {
     }
 }
 
+// 显示保存指示器（3秒动画提示）
+function showSaveIndicator() {
+    if (!saveIndicator) return;
+    // 清除之前的定时器
+    if (_saveIndicatorTimer) {
+        clearTimeout(_saveIndicatorTimer);
+        _saveIndicatorTimer = null;
+    }
+    // 重置动画
+    saveIndicator.classList.remove('show', 'pop');
+    void saveIndicator.offsetWidth; // 强制回流
+    // 显示并弹出动画
+    saveIndicator.style.display = '';
+    saveIndicator.classList.add('show', 'pop');
+    // 3秒后隐藏
+    _saveIndicatorTimer = setTimeout(() => {
+        saveIndicator.classList.remove('show', 'pop');
+        // 过渡结束后隐藏元素
+        setTimeout(() => {
+            if (!saveIndicator.classList.contains('show')) {
+                saveIndicator.style.display = 'none';
+            }
+        }, 300);
+        _saveIndicatorTimer = null;
+    }, 3000);
+}
+
 // Ctrl+S 保存
 async function saveEditAndPreview() {
     if (!selectedFile) return;
@@ -1665,7 +1694,7 @@ async function saveEditAndPreview() {
         const data = await response.json();
 
         if (data.success) {
-            showSuccess(t('save_success'));
+            showSaveIndicator();
             currentMarkdownSource = newContent;
             previewEditUnsaved = false;
         } else {
@@ -2364,22 +2393,136 @@ function loadTocState() {
     previewPanel.classList.toggle('toc-collapsed', !visible);
 }
 
+// Mermaid 统一配置 - 覆盖所有支持的图表类型
+var MERMAID_CONFIG = {
+    startOnLoad: false,
+    theme: 'default',
+    securityLevel: 'loose',
+    suppressErrorRendering: false,
+    fontFamily: 'Arial, sans-serif',
+    logLevel: 'error',
+    // 流程图
+    flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: 'basis',
+        padding: 15,
+        nodeSpacing: 50,
+        rankSpacing: 50
+    },
+    // 时序图
+    sequence: {
+        useMaxWidth: true,
+        showSequenceNumbers: false,
+        actorFontSize: 14,
+        actorFontWeight: 400,
+        noteFontSize: 14,
+        noteFontWeight: 400,
+        messageFontSize: 14,
+        messageFontWeight: 400,
+        wrap: true,
+        width: 150
+    },
+    // 类图
+    class: {
+        useMaxWidth: true,
+        fontSize: 14
+    },
+    // 状态图
+    state: {
+        useMaxWidth: true,
+        fontSize: 14
+    },
+    // ER图
+    er: {
+        useMaxWidth: true,
+        fontSize: 14
+    },
+    // 甘特图
+    gantt: {
+        useMaxWidth: true,
+        titleTopMargin: 25,
+        barHeight: 20,
+        barGap: 4,
+        topPadding: 50,
+        leftPadding: 75,
+        gridLineStartPadding: 35,
+        fontSize: 14,
+        numberSectionStyles: 4
+    },
+    // 饼图
+    pie: {
+        useMaxWidth: true,
+        fontSize: 14
+    },
+    // 旅程图
+    journey: {
+        useMaxWidth: true,
+        fontSize: 14
+    },
+    // Git图
+    gitGraph: {
+        useMaxWidth: true,
+        fontSize: 14
+    },
+    // 思维导图
+    mindmap: {
+        useMaxWidth: true,
+        padding: 10
+    },
+    // 时间线
+    timeline: {
+        useMaxWidth: true,
+        padding: 10
+    },
+    // 桑基图
+    sankey: {
+        useMaxWidth: true
+    },
+    // XY图表
+    xyChart: {
+        useMaxWidth: true
+    },
+    // 象限图
+    quadrantChart: {
+        useMaxWidth: true
+    },
+    // 需求图
+    requirement: {
+        useMaxWidth: true,
+        fontSize: 14
+    },
+    // 块图
+    block: {
+        useMaxWidth: true,
+        padding: 10
+    },
+    // 数据包图
+    packet: {
+        useMaxWidth: true,
+        padding: 10
+    },
+    // 架构图
+    architecture: {
+        useMaxWidth: true,
+        padding: 10
+    },
+    // 看板
+    kanban: {
+        useMaxWidth: true,
+        padding: 10
+    }
+};
+
 // 初始化Mermaid
 function initializeMermaid() {
     if (window.mermaid) {
-        mermaid.initialize({
-            startOnLoad: false,
-            theme: 'default',
-            securityLevel: 'loose',
-            themeVariables: {
-                fontFamily: 'Arial, sans-serif'
-            },
-            flowchart: {
-                useMaxWidth: true,
-                htmlLabels: true
-            }
-        });
-        console.log('✅ Mermaid已初始化');
+        try {
+            mermaid.initialize(MERMAID_CONFIG);
+            console.log('✅ Mermaid已初始化 (v' + (mermaid.version || '?') + ')');
+        } catch (e) {
+            console.warn('⚠️ Mermaid初始化失败:', e);
+        }
     } else {
         console.warn('⚠️ Mermaid库尚未加载，等待加载...');
         // 如果Mermaid还没加载，等待一段时间后重试
@@ -2517,18 +2660,7 @@ async function renderMermaidDiagrams() {
     
     // 确保Mermaid已初始化
     try {
-        mermaid.initialize({
-            startOnLoad: false,
-            theme: 'default',
-            securityLevel: 'loose',
-            themeVariables: {
-                fontFamily: 'Arial, sans-serif'
-            },
-            flowchart: {
-                useMaxWidth: true,
-                htmlLabels: true
-            }
-        });
+        mermaid.initialize(MERMAID_CONFIG);
     } catch (err) {
         console.error('Mermaid初始化失败:', err);
     }

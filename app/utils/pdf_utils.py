@@ -251,8 +251,28 @@ def build_browser_pdf_html(
             startOnLoad: false,
             theme: 'default',
             securityLevel: 'loose',
-            themeVariables: {{ fontFamily: 'Arial, sans-serif' }},
-            flowchart: {{ useMaxWidth: true, htmlLabels: true }}
+            suppressErrorRendering: false,
+            fontFamily: 'Arial, sans-serif',
+            logLevel: 'error',
+            flowchart: {{ useMaxWidth: true, htmlLabels: true, curve: 'basis' }},
+            sequence: {{ useMaxWidth: true, showSequenceNumbers: false }},
+            class: {{ useMaxWidth: true }},
+            state: {{ useMaxWidth: true }},
+            er: {{ useMaxWidth: true }},
+            gantt: {{ useMaxWidth: true, barHeight: 20, barGap: 4 }},
+            pie: {{ useMaxWidth: true }},
+            journey: {{ useMaxWidth: true }},
+            gitGraph: {{ useMaxWidth: true }},
+            mindmap: {{ useMaxWidth: true, padding: 10 }},
+            timeline: {{ useMaxWidth: true, padding: 10 }},
+            sankey: {{ useMaxWidth: true }},
+            xyChart: {{ useMaxWidth: true }},
+            quadrantChart: {{ useMaxWidth: true }},
+            requirement: {{ useMaxWidth: true }},
+            block: {{ useMaxWidth: true, padding: 10 }},
+            packet: {{ useMaxWidth: true, padding: 10 }},
+            architecture: {{ useMaxWidth: true, padding: 10 }},
+            kanban: {{ useMaxWidth: true, padding: 10 }}
         }});
 
         const blocks = Array.from(previewContent.querySelectorAll('pre code.language-mermaid'));

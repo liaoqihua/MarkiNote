@@ -432,6 +432,8 @@
         if (saveBtnSpan) saveBtnSpan.textContent = t('save');
         const cancelBtnSpan = document.querySelector('#editorCancelBtn .btn-text');
         if (cancelBtnSpan) cancelBtnSpan.textContent = t('exit_edit');
+        const saveIndicatorText = document.querySelector('.preview-editor-save-text');
+        if (saveIndicatorText) saveIndicatorText.textContent = t('save_success');
 
         // TOC toggle button
         _a('#tocToggleBtn', 'title', 'toc_toggle');

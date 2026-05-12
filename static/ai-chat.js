@@ -1149,13 +1149,19 @@
         const mermaidBlocks = aiMessages.querySelectorAll('pre code.language-mermaid');
         if (mermaidBlocks.length === 0) return;
 
-        // 初始化 mermaid
+        // 初始化 mermaid - 使用统一配置
         try {
-            mermaid.initialize({
-                startOnLoad: false,
-                theme: 'default',
-                securityLevel: 'loose',
-            });
+            mermaid.initialize(
+                window.MERMAID_CONFIG || {
+                    startOnLoad: false,
+                    theme: 'default',
+                    securityLevel: 'loose',
+                    suppressErrorRendering: false,
+                    fontFamily: 'Arial, sans-serif',
+                    logLevel: 'error',
+                    flowchart: { useMaxWidth: true, htmlLabels: true }
+                }
+            );
         } catch (err) {
             console.error('Mermaid 初始化失败:', err);
             return;
