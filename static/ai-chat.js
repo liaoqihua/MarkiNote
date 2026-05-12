@@ -1134,8 +1134,18 @@
         text = text.replace(/^## (.+)$/gm, '<h3>$1</h3>');
         text = text.replace(/^# (.+)$/gm, '<h2>$1</h2>');
 
-        text = text.replace(/^\d+\. (.+)$/gm, '<li class="ol">$1</li>');
-        text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+        // Group ordered list items (handles both tight and loose lists with blank lines)
+        text = text.replace(/((?:^\d+\. .+(?:\n|$))(?:\n*(?:^\d+\. .+(?:\n|$)))*)/gm, (match) => {
+            const items = match.split('\n').filter(line => /^\d+\. /.test(line))
+                .map(line => line.replace(/^\d+\. (.+)$/, '<li class="ol">$1</li>'));
+            return items.length ? '<ol>' + items.join('') + '</ol>' : match;
+        });
+        // Group unordered list items (handles both tight and loose lists with blank lines)
+        text = text.replace(/((?:^[-*] .+(?:\n|$))(?:\n*(?:^[-*] .+(?:\n|$)))*)/gm, (match) => {
+            const items = match.split('\n').filter(line => /^[-*] /.test(line))
+                .map(line => line.replace(/^[-*] (.+)$/, '<li>$1</li>'));
+            return items.length ? '<ul>' + items.join('') + '</ul>' : match;
+        });
         text = text.replace(/(&gt; .+(?:\n&gt; .+)*)/g, (match) => {
             const content = match.replace(/^&gt; /gm, '');
             return `<blockquote>${content}</blockquote>`;
@@ -1159,7 +1169,11 @@
             .replace(/<p>(<pre>)/g, '$1')
             .replace(/(<\/pre>)<\/p>/g, '$1')
             .replace(/<p>(<blockquote>)/g, '$1')
-            .replace(/(<\/blockquote>)<\/p>/g, '$1');
+            .replace(/(<\/blockquote>)<\/p>/g, '$1')
+            .replace(/<p>(<ol>)/g, '$1')
+            .replace(/(<\/ol>)<\/p>/g, '$1')
+            .replace(/<p>(<ul>)/g, '$1')
+            .replace(/(<\/ul>)<\/p>/g, '$1');
     }
 
     // --- 工具函数 ---

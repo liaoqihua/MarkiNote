@@ -1,7 +1,13 @@
 """Flask应用初始化"""
-from flask import Flask
+import logging
+import time
+
+from flask import Flask, g, request
+
 from app.config import Config
 from app.runtime import resource_path
+
+logger = logging.getLogger(__name__)
 
 
 def create_app():
@@ -22,6 +28,23 @@ def create_app():
     # 初始化配置
     Config.init_app(app)
     
+    # 注册 Flask 请求日志中间件
+    @app.before_request
+    def _log_request_start():
+        g._markinote_request_start = time.monotonic()
+
+    @app.after_request
+    def _log_request_end(response):
+        elapsed_ms = (time.monotonic() - getattr(g, "_markinote_request_start", time.monotonic())) * 1000
+        logger.info(
+            "%s %s %s %.0fms",
+            request.method,
+            request.path,
+            response.status_code,
+            elapsed_ms,
+        )
+        return response
+
     # 注册蓝图
     from app.routes import main_bp, library_bp, ai_bp, pdf_bp
     app.register_blueprint(main_bp)

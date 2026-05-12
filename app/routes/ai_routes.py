@@ -1,6 +1,7 @@
 """AI 助手路由：对话、备份、回滚"""
 import os
 import json
+import logging
 import uuid
 from datetime import datetime
 from flask import Blueprint, Response, request, jsonify, current_app
@@ -10,6 +11,7 @@ from app.utils.ai_backup import BackupManager
 import requests as http_requests
 
 ai_bp = Blueprint('ai', __name__)
+logger = logging.getLogger(__name__)
 
 CONVERSATIONS_DIR = '.ai_conversations'
 BACKUPS_DIR = '.ai_backups'
@@ -86,8 +88,8 @@ def _generate_title(user_msg, assistant_msg, provider_id, model_id, api_key, lan
             data = resp.json()
             title = data['choices'][0]['message']['content'].strip().strip('"\'""''')
             return title[:30]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("标题生成失败: %s", e)
     return None
 
 
@@ -124,6 +126,10 @@ def validate_key():
     if not provider or not api_key:
         return jsonify({'success': False, 'message': '缺少参数'}), 400
     ok, msg = validate_api_key(provider, api_key)
+    if ok:
+        logger.info("API Key 验证成功: provider=%s", provider)
+    else:
+        logger.warning("API Key 验证失败: provider=%s, reason=%s", provider, msg)
     return jsonify({'success': ok, 'message': msg})
 
 
@@ -143,7 +149,8 @@ def ai_settings():
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-            except (json.JSONDecodeError, Exception):
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning("AI 设置文件读取失败: %s", e)
                 settings = {}
         else:
             settings = {}
@@ -171,8 +178,10 @@ def ai_settings():
     try:
         with open(_settings_path(), 'w', encoding='utf-8') as f:
             json.dump(settings, f, ensure_ascii=False, indent=2)
+        logger.info("AI 设置已保存: provider=%s, model=%s", settings.get('provider'), settings.get('model'))
         return jsonify({'success': True})
     except Exception as e:
+        logger.exception("AI 设置保存失败")
         return jsonify({'success': False, 'message': f'保存失败: {str(e)}'}), 500
 
 
@@ -193,7 +202,8 @@ def list_conversations():
                 'updated_at': c.get('updated_at', ''),
                 'message_count': len([m for m in c.get('messages', []) if m['role'] in ('user', 'assistant')])
             })
-        except Exception:
+        except Exception as e:
+            logger.warning("读取会话文件失败: %s, 错误: %s", fname, e)
             continue
     convs.sort(key=lambda x: x.get('updated_at', ''), reverse=True)
     return jsonify({'success': True, 'conversations': convs})
@@ -207,6 +217,7 @@ def manage_conversation(conv_id):
             bm = _get_backup_manager()
             removed_count = bm.delete_conversation_backups(conv_id)
             os.remove(path)
+            logger.info("删除会话: %s, 清理备份: %d", conv_id, removed_count)
             return jsonify({'success': True, 'backups_removed': removed_count})
         return jsonify({'error': '对话不存在'}), 404
 
@@ -219,6 +230,7 @@ def manage_conversation(conv_id):
         if new_title:
             conv['title'] = new_title[:50]
             _save_conversation(conv)
+            logger.info("会话重命名: %s -> %s", conv_id, new_title[:50])
         return jsonify({'success': True, 'title': conv['title']})
 
     conv = _load_conversation(conv_id)
@@ -263,6 +275,9 @@ def chat():
     if not api_key:
         return jsonify({'error': '请先设置 API Key'}), 400
 
+    logger.info("AI 聊天请求: conv=%s provider=%s model=%s msg_len=%d file=%s",
+                conv_id or "(新)", provider_id, model_id, len(user_message), context_file or "(无)")
+
     conv = None
     if conv_id:
         conv = _load_conversation(conv_id)
@@ -290,8 +305,8 @@ def chat():
                     with open(_fp, 'r', encoding='utf-8') as f:
                         _fc = f.read()
                     actual_user_content += f'\n\n[附加文件: {fpath}]\n```\n{_fc}\n```'
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("附加文件读取失败: %s, 错误: %s", fpath, e)
 
     conv['messages'].append({'role': 'user', 'content': actual_user_content})
     _save_conversation(conv)
@@ -346,6 +361,7 @@ def chat():
                     if idx in tool_calls_map:
                         tool_calls_map[idx]['function']['arguments'] += event['arguments']
                 elif etype == 'error':
+                    logger.error("AI 流式响应错误: %s", event['message'])
                     yield _sse_event('error', {'message': event['message']})
                     _save_conv(conv)
                     return
@@ -384,6 +400,7 @@ def chat():
                     api_key=api_key, provider_id=provider_id, model_id=model_id
                 )
 
+                logger.debug("工具执行: %s(%s) -> result_len=%d", fn_name, fn_args.get('path', fn_args.get('query', '')), len(result))
                 yield _sse_event('tool_result', {
                     'call_id': tc['id'],
                     'name': fn_name,
@@ -451,6 +468,7 @@ def save_partial(conv_id):
     if not partial_content and not partial_reasoning:
         return jsonify({'success': True, 'message': '无内容可保存'})
 
+    logger.info("保存流式输出中断内容: conv=%s, content_len=%d", conv_id, len(partial_content))
     msgs = conv.get('messages', [])
     if msgs and msgs[-1]['role'] == 'assistant' and not msgs[-1].get('tool_calls'):
         msgs[-1]['content'] = partial_content
@@ -514,6 +532,7 @@ def truncate_conversation(conv_id):
     conv['messages'] = messages[:truncate_at]
     _save_conversation(conv)
 
+    logger.info("截断会话: %s, 移除 %d 条消息, 回滚 %d 组操作", conv_id, len(removed), len(rollback_results))
     return jsonify({
         'success': True,
         'message': f'已截断对话，回滚了 {len(rollback_results)} 组操作',
@@ -533,6 +552,10 @@ def rollback():
 
     bm = _get_backup_manager()
     ok, msg = bm.rollback_operation(group_id, op_index)
+    if ok:
+        logger.info("回滚成功: group=%s, index=%s", group_id, op_index)
+    else:
+        logger.warning("回滚失败: group=%s, index=%s, reason=%s", group_id, op_index, msg)
     return jsonify({'success': ok, 'message': msg})
 
 

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import os
 import shutil
 import sys
@@ -110,9 +111,13 @@ def get_data_dir() -> Path:
 
 
 def get_log_dir() -> Path:
-    """获取日志目录，默认使用各系统推荐的用户级日志位置。
+    """获取日志目录。
 
-    可通过 MARKINOTE_LOG_DIR 覆盖。
+    优先级：
+    1. MARKINOTE_LOG_DIR 环境变量
+    2. 打包后：各系统推荐的用户级日志目录
+    3. 源码运行：项目根目录下的 logs/，便于开发时查看
+
     - Windows: %LOCALAPPDATA%\\MarkiNote\\logs
     - macOS: ~/Library/Logs/MarkiNote
     - Linux/WSL: ~/.local/state/MarkiNote/logs
@@ -121,19 +126,23 @@ def get_log_dir() -> Path:
     if env_dir:
         return Path(env_dir).expanduser().resolve()
 
-    if sys.platform.startswith("win"):
-        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
-        if base:
-            return Path(base) / APP_NAME / LOG_DIR_NAME
-        return Path.home() / "AppData" / "Local" / APP_NAME / LOG_DIR_NAME
+    if is_frozen():
+        if sys.platform.startswith("win"):
+            base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+            if base:
+                return Path(base) / APP_NAME / LOG_DIR_NAME
+            return Path.home() / "AppData" / "Local" / APP_NAME / LOG_DIR_NAME
 
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Logs" / APP_NAME
+        if sys.platform == "darwin":
+            return Path.home() / "Library" / "Logs" / APP_NAME
 
-    state_home = os.environ.get("XDG_STATE_HOME")
-    if state_home:
-        return Path(state_home) / APP_NAME / LOG_DIR_NAME
-    return Path.home() / ".local" / "state" / APP_NAME / LOG_DIR_NAME
+        state_home = os.environ.get("XDG_STATE_HOME")
+        if state_home:
+            return Path(state_home) / APP_NAME / LOG_DIR_NAME
+        return Path.home() / ".local" / "state" / APP_NAME / LOG_DIR_NAME
+
+    # 源码运行：项目根目录下的 logs/
+    return project_root() / LOG_DIR_NAME
 
 
 def ensure_data_dirs() -> dict[str, Path]:
@@ -167,15 +176,19 @@ def ensure_data_dirs() -> dict[str, Path]:
     }
 
 
-def setup_logging() -> Path:
-    """配置日志：控制台输出保留，同时写入日志文件。"""
+def setup_logging(debug: bool = False) -> Path:
+    """配置日志：控制台输出保留，同时写入日志文件（支持轮转）。
+
+    Args:
+        debug: True 时根日志级别为 DEBUG（开发模式），否则为 INFO（生产模式）。
+    """
     global _stdout_log_handle, _stderr_log_handle
 
     paths = ensure_data_dirs()
     log_file = paths["log_file"]
 
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.DEBUG if debug else logging.INFO)
 
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -184,7 +197,12 @@ def setup_logging() -> Path:
 
     # 避免重复添加 handler（Flask reloader 或测试导入时可能重复执行）。
     if not any(getattr(handler, "_markinote_file", False) for handler in root_logger.handlers):
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=10 * 1024 * 1024,  # 10 MB
+            backupCount=5,
+            encoding="utf-8",
+        )
         file_handler.setFormatter(formatter)
         file_handler._markinote_file = True
         root_logger.addHandler(file_handler)

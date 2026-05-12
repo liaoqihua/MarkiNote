@@ -1,9 +1,12 @@
 """AI 备份与回滚管理"""
 import os
 import json
+import logging
 import shutil
 import uuid
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class BackupManager:
@@ -30,6 +33,7 @@ class BackupManager:
             'operations': []
         }
         self._save_manifest(group_dir, manifest)
+        logger.debug("创建备份组: %s (conv=%s)", group_id, conversation_id)
         return group_id
 
     def backup_before_modify(self, group_id, operation_type, rel_path, description=''):
@@ -78,6 +82,7 @@ class BackupManager:
     def rollback_operation(self, group_id, operation_index=None):
         group_dir = os.path.join(self.backup_dir, group_id)
         if not os.path.exists(group_dir):
+            logger.warning("回滚失败: 备份组不存在 %s", group_id)
             return False, '备份不存在'
 
         manifest = self._load_manifest(group_dir)
@@ -110,6 +115,7 @@ class BackupManager:
                     shutil.rmtree(target)
                 shutil.copytree(backup_src, target)
 
+        logger.info("回滚成功: group=%s ops=%d", group_id, len(ops))
         return True, '回滚成功'
 
     def list_backups(self, limit=50):
@@ -150,17 +156,23 @@ class BackupManager:
                     removed += 1
             except Exception:
                 continue
+        if removed:
+            logger.debug("清理会话备份: conv=%s removed=%d", conversation_id, removed)
         return removed
 
     def cleanup(self, max_count=100):
         if not os.path.exists(self.backup_dir):
             return
         dirs = sorted(os.listdir(self.backup_dir))
+        removed = 0
         while len(dirs) > max_count:
             old = dirs.pop(0)
             old_path = os.path.join(self.backup_dir, old)
             if os.path.isdir(old_path):
                 shutil.rmtree(old_path, ignore_errors=True)
+                removed += 1
+        if removed:
+            logger.debug("备份清理: 移除 %d 个旧备份组, 剩余 %d", removed, len(dirs))
 
     def _save_manifest(self, group_dir, manifest):
         with open(os.path.join(group_dir, 'manifest.json'), 'w', encoding='utf-8') as f:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import threading
@@ -59,14 +60,13 @@ def _open_browser(url: str, enabled: bool = True) -> None:
 def run(argv: list[str] | None = None) -> None:
     """启动 MarkiNote。"""
     args = parse_args(argv)
-    log_file = setup_logging()
 
     host = args.host or os.environ.get("MARKINOTE_HOST", "127.0.0.1")
     port = args.port or int(os.environ.get("MARKINOTE_PORT", "5000"))
 
     # 运行模式判定：
-    #   - 打包后（PyInstaller frozen）默认生产模式（waitress）；
-    #   - 以脚本方式运行（python main.py）默认开发模式（Flask dev server）；
+    #   - 打包后（PyInstaller frozen）默认生产模式（waitress + INFO 日志）；
+    #   - 以脚本方式运行（python main.py）默认开发模式（Flask dev server + DEBUG 日志）；
     #   - 可通过 --debug / --production 或 MARKINOTE_DEBUG=1 显式覆盖。
     env_debug = os.environ.get("MARKINOTE_DEBUG", "0") == "1"
     if args.production:
@@ -76,20 +76,45 @@ def run(argv: list[str] | None = None) -> None:
         debug = True
         use_production_server = False
     else:
-        debug = False
+        debug = not is_frozen()
         use_production_server = is_frozen()
+
+    log_file = setup_logging(debug=debug)
 
     open_browser = should_open_browser(args)
     url = f"http://localhost:{port}"
 
-    print("🚀 MarkiNote 启动中...")
-    print(f"📝 访问 {url} 使用应用")
-    print(f"📁 数据目录: {get_data_dir()}")
-    print(f"📚 文档库目录: {app.config['LIBRARY_FOLDER']}")
-    print(f"🗂️ 日志目录: {get_log_dir()}")
-    print(f"📄 日志文件: {log_file}")
-    print(f"🌐 自动打开浏览器: {'是' if open_browser else '否'}")
-    print("💡 支持的功能：Markdown 预览、文件管理、数学公式、代码高亮")
+    logger.info("🚀 MarkiNote 启动中...")
+    logger.info("📝 访问 %s 使用应用", url)
+    logger.info("📁 数据目录: %s", get_data_dir())
+    logger.info("📚 文档库目录: %s", app.config['LIBRARY_FOLDER'])
+    logger.info("🗂️ 日志目录: %s", get_log_dir())
+    logger.info("📄 日志文件: %s", log_file)
+    logger.info("🌐 自动打开浏览器: %s", "是" if open_browser else "否")
+    logger.info("💡 支持的功能：Markdown 预览、文件管理、数学公式、代码高亮")
+
+    # 打印 AI 配置信息
+    from app.utils.ai_provider import PROVIDERS
+    providers_info = {k: [m['name'] for m in v['models']] for k, v in PROVIDERS.items()}
+    logger.info("🤖 AI 提供商: %s", ", ".join(f"{k}({', '.join(v)})" for k, v in providers_info.items()))
+
+    settings_path = os.path.join(app.config['DATA_DIR'], 'ai_settings.json')
+    if os.path.exists(settings_path):
+        try:
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            provider = settings.get('provider', '未设置')
+            model = settings.get('model', '未设置')
+            has_key = bool(settings.get('api_key', ''))
+            logger.info("🔑 AI 当前设置: provider=%s model=%s api_key=%s",
+                        provider, model, "已配置" if has_key else "未配置")
+        except Exception:
+            logger.warning("⚠️ AI 配置文件读取失败")
+    else:
+        logger.info("🔑 AI 配置: 未设置（请在应用内配置 API Key）")
+
+    logger.info("💬 AI 对话记录: %s", app.config['CONVERSATIONS_DIR'])
+    logger.info("📦 AI 备份数据: %s", app.config['BACKUPS_DIR'])
 
     logger.info("MarkiNote starting: host=%s port=%s debug=%s open_browser=%s production=%s",
                 host, port, debug, open_browser, use_production_server)
@@ -109,11 +134,11 @@ def run(argv: list[str] | None = None) -> None:
             return
 
         threads = int(os.environ.get("MARKINOTE_THREADS", "8"))
-        print(f"🛡  生产模式：使用 waitress 启动（threads={threads}）")
+        logger.info("🛡️ 生产模式：使用 waitress 启动（threads=%s）", threads)
         logger.info("Serving via waitress on %s:%s (threads=%s)", host, port, threads)
         serve(app, host=host, port=port, threads=threads, ident="MarkiNote")
     else:
-        print("🧪 开发模式：使用 Flask 内置开发服务器")
+        logger.info("🧪 开发模式：使用 Flask 内置开发服务器")
         logger.info("Serving via Flask development server (debug=%s)", debug)
         app.run(debug=debug, host=host, port=port, use_reloader=False)
 

@@ -1,4 +1,6 @@
 """Library路由：文件和文件夹管理"""
+import logging
+
 from flask import Blueprint, jsonify, current_app, request
 from datetime import datetime
 import os
@@ -6,6 +8,7 @@ import shutil
 from app.utils import allowed_file, safe_filename
 
 library_bp = Blueprint('library', __name__)
+logger = logging.getLogger(__name__)
 
 def get_library_structure(base_path, current_path=''):
     """获取Library目录结构（优化版，使用scandir提高性能）
@@ -55,7 +58,7 @@ def get_library_structure(base_path, current_path=''):
                             })
                 except (OSError, PermissionError) as e:
                     # 跳过无法访问的文件
-                    print(f"跳过文件 {entry.name}: {e}")
+                    logger.warning("跳过文件 %s: %s", entry.name, e)
                     continue
                     
     except Exception as e:
@@ -80,7 +83,9 @@ def list_library():
     
     total_time = (time.time() - start_time) * 1000
     
-    print(f"⚡ Library扫描: {scan_time:.0f}ms | 总计: {total_time:.0f}ms | 路径: {current_path or '根目录'} | 项目数: {len(items) if isinstance(items, list) else 0}")
+    logger.debug("Library扫描: %.0fms | 总计: %.0fms | 路径: %s | 项目数: %d",
+                 scan_time, total_time, current_path or '根目录',
+                 len(items) if isinstance(items, list) else 0)
     
     return jsonify({
         'success': True,
@@ -303,7 +308,7 @@ def get_all_folders():
                     sub_folders = get_folders_recursive(item_path, rel_path)
                     folders.extend(sub_folders)
         except Exception as e:
-            print(f"Error reading directory {path}: {e}")
+            logger.warning("读取目录失败: %s, 错误: %s", path, e)
         
         return folders
     

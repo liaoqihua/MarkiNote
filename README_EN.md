@@ -213,36 +213,43 @@ The app opens your browser automatically. You can also manually visit `http://lo
 
 ### Data Directory & Logs
 
-Uploaded Markdown / TXT files are saved in the document library directory:
+Uploaded Markdown / TXT files are saved in the document library directory. **Directory location depends on the run mode:**
 
-- Source run: `lib/` under the project root
-- Packaged run: `lib/` under the system-recommended per-user app data directory
-  - Windows: `%LOCALAPPDATA%\MarkiNote\lib\`
-  - macOS: `~/Library/Application Support/MarkiNote/lib/`
-  - Linux: `~/.local/share/MarkiNote/lib/` or `$XDG_DATA_HOME/MarkiNote/lib/`
-- Custom location: set `MARKINOTE_DATA_DIR`; the library becomes `$MARKINOTE_DATA_DIR/lib/`
+| Run Mode | Library (Data) Directory | Log Directory |
+|----------|------------------------|---------------|
+| Source run `python main.py` | Project root `lib/` | Project root `logs/` |
+| Packaged run (exe) | System app data `lib/` | System log directory |
 
-AI conversations, backups, and configuration are stored in the same data directory:
+**Source run** — data files live in the project root:
 
 ```text
-.ai_conversations/   AI conversation history
-.ai_backups/         AI change backups
-ai_settings.json     AI configuration (provider, model, API Key)
+lib/                   Document library (Markdown / TXT files)
+logs/                  Log files (auto-rotated, max 10 MB per file, 5 backups kept)
+.ai_conversations/     AI conversation history
+.ai_backups/           AI change backups
+ai_settings.json       AI configuration (provider, model, API Key)
 ```
 
-Logs are written to both the console and a log file. Default log file locations:
+**Packaged run** — data files are stored in system user directories:
 
-```text
-Windows: %LOCALAPPDATA%\MarkiNote\logs\markinote.log
-macOS:   ~/Library/Logs/MarkiNote/markinote.log
-Linux:   ~/.local/state/MarkiNote/logs/markinote.log
-```
+| OS | Data Directory | Log Directory |
+|-----|--------------|-------------|
+| Windows | `%LOCALAPPDATA%\MarkiNote\` | `%LOCALAPPDATA%\MarkiNote\logs\` |
+| macOS | `~/Library/Application Support/MarkiNote/` | `~/Library/Logs/MarkiNote/` |
+| Linux | `~/.local/share/MarkiNote/` | `~/.local/state/MarkiNote/logs/` |
 
-You can override paths with environment variables:
+> 💡 Paths can be overridden with `MARKINOTE_DATA_DIR` / `MARKINOTE_LOG_DIR` environment variables.
 
-```bash
-MARKINOTE_DATA_DIR=/path/to/data MARKINOTE_LOG_DIR=/path/to/logs uv run python main.py
-```
+Log level details:
+
+| Mode | Log Level | Description |
+|------|----------|-------------|
+| Dev mode (`--debug`) | DEBUG | Detailed debug info including Markdown processing, API request details, performance stats |
+| Production mode (default) | INFO | Only important operations, warnings, and errors |
+
+Log format: `Time [Level] Module: Message`
+
+Logs are written to both the **console (terminal)** and **log file**. Flask request logs (method, path, status code, duration) are also recorded automatically.
 
 Startup arguments can control whether the browser opens automatically:
 

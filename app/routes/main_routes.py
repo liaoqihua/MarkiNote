@@ -1,4 +1,6 @@
 """主要路由：首页和文件上传"""
+import logging
+
 from flask import Blueprint, render_template, request, jsonify, current_app
 from werkzeug.utils import secure_filename
 from datetime import datetime
@@ -6,6 +8,7 @@ import os
 from app.utils import allowed_file, process_markdown
 
 main_bp = Blueprint('main', __name__)
+logger = logging.getLogger(__name__)
 
 @main_bp.route('/')
 def index():
@@ -39,6 +42,7 @@ def preview_file():
         # 处理Markdown内容
         html_content = process_markdown(md_content)
         
+        logger.debug("文件预览: %s, 大小: %d 字节", file_path, len(md_content))
         return jsonify({
             'success': True,
             'html': html_content,
@@ -46,5 +50,6 @@ def preview_file():
             'filename': os.path.basename(file_path)
         })
     except Exception as e:
+        logger.exception("文件预览失败: %s", file_path)
         return jsonify({'error': f'预览失败: {str(e)}'}), 500
 

@@ -213,36 +213,43 @@ uv run python main.py
 
 ### 数据目录与日志
 
-上传的 Markdown / TXT 文件会保存到文档库目录：
+上传的 Markdown / TXT 文件会保存到文档库目录。**目录位置取决于运行模式：**
 
-- 源码运行：项目根目录下的 `lib/`
-- 打包后运行：系统推荐的用户级应用数据目录下的 `lib/`
-  - Windows: `%LOCALAPPDATA%\MarkiNote\lib\`
-  - macOS: `~/Library/Application Support/MarkiNote/lib/`
-  - Linux: `~/.local/share/MarkiNote/lib/` 或 `$XDG_DATA_HOME/MarkiNote/lib/`
-- 自定义位置：设置 `MARKINOTE_DATA_DIR` 后，文档库为 `$MARKINOTE_DATA_DIR/lib/`
+| 运行模式 | 文档库（数据）目录 | 日志目录 |
+|---------|-----------------|---------|
+| 源码运行 `python main.py` | 项目根目录 `lib/` | 项目根目录 `logs/` |
+| 打包后运行（exe） | 系统应用数据目录 `lib/` | 系统日志目录 |
 
-AI 对话、备份和配置也会保存在同一个数据目录下：
+**源码运行时**，数据文件保存在项目根目录：
 
 ```text
-.ai_conversations/   AI 对话历史
-.ai_backups/         AI 修改备份
-ai_settings.json     AI 配置（提供商、模型、API Key）
+lib/                   文档库（Markdown / TXT 文件）
+logs/                  日志文件（自动轮转，单文件最大 10MB，保留 5 个备份）
+.ai_conversations/     AI 对话历史
+.ai_backups/           AI 修改备份
+ai_settings.json       AI 配置（提供商、模型、API Key）
 ```
 
-日志会同时输出到控制台和日志文件。默认日志文件位置：
+**打包后运行时**，保存在系统用户级目录：
 
-```text
-Windows: %LOCALAPPDATA%\MarkiNote\logs\markinote.log
-macOS:   ~/Library/Logs/MarkiNote/markinote.log
-Linux:   ~/.local/state/MarkiNote/logs/markinote.log
-```
+| 系统 | 数据目录 | 日志目录 |
+|------|---------|---------|
+| Windows | `%LOCALAPPDATA%\MarkiNote\` | `%LOCALAPPDATA%\MarkiNote\logs\` |
+| macOS | `~/Library/Application Support/MarkiNote/` | `~/Library/Logs/MarkiNote/` |
+| Linux | `~/.local/share/MarkiNote/` | `~/.local/state/MarkiNote/logs/` |
 
-可用环境变量覆盖：
+> 💡 可以使用 `MARKINOTE_DATA_DIR` / `MARKINOTE_LOG_DIR` 环境变量自定义路径。
 
-```bash
-MARKINOTE_DATA_DIR=/path/to/data MARKINOTE_LOG_DIR=/path/to/logs uv run python main.py
-```
+日志级别说明：
+
+| 模式 | 日志级别 | 说明 |
+|------|---------|------|
+| 开发模式（`--debug`） | DEBUG | 详细的调试信息，包含 Markdown 处理细节、API 请求详情、性能统计等 |
+| 生产模式（默认） | INFO | 只记录重要操作、警告和错误，减少日志量 |
+
+日志格式：`时间 [级别] 模块名称: 消息内容`
+
+日志会同时输出到**控制台（终端）**和**日志文件**。Flask 请求日志（方法、路径、状态码、耗时）也会自动记录。
 
 启动时可用参数控制是否自动打开浏览器：
 

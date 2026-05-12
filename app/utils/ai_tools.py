@@ -1,6 +1,9 @@
 """AI 工具定义与执行逻辑"""
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 TOOL_DEFINITIONS = [
     {
@@ -298,8 +301,10 @@ def execute_tool(tool_name, arguments, library_dir, backup_manager, backup_group
     try:
         return handler(args, library_dir, backup_manager, backup_group_id, **extra)
     except ValueError as e:
+        logger.warning("工具安全错误: %s(%s) -> %s", tool_name, args, e)
         return f'安全错误: {str(e)}', None
     except Exception as e:
+        logger.exception("工具执行异常: %s(%s)", tool_name, args)
         return f'执行失败: {str(e)}', None
 
 
@@ -587,10 +592,13 @@ def _fetch_url(args, lib_dir, bm, gid, **extra):
         return f'URL: {url}\n内容长度: {len(text_content)} 字符 (已截断至 {MAX_DIRECT})\n\n---\n{truncated}\n\n[... 内容已截断 ...]', None
 
     except req.Timeout:
+        logger.warning("URL 抓取超时: %s", url)
         return f'抓取超时: {url}', None
     except req.ConnectionError:
+        logger.warning("URL 连接失败: %s", url)
         return f'无法连接到: {url}', None
     except Exception as e:
+        logger.exception("URL 抓取异常: %s", url)
         return f'抓取失败: {str(e)}', None
 
 
@@ -677,9 +685,11 @@ def _summarize_with_subagent(content, url, api_key, provider_id, model_id):
             summary = data['choices'][0]['message']['content']
             return f'URL: {url}\n原始内容长度: {len(content)} 字符\n\n[Subagent 网页摘要]\n\n{summary}'
         else:
+            logger.warning("Subagent 摘要生成失败: url=%s status=%d", url, api_resp.status_code)
             return f'URL: {url}\n内容长度: {len(content)} 字符 (已截断)\n\n---\n{content[:8000]}\n\n[... 摘要生成失败: HTTP {api_resp.status_code} ...]'
 
     except Exception as e:
+        logger.exception("Subagent 摘要生成异常: %s", url)
         return f'URL: {url}\n内容长度: {len(content)} 字符 (已截断)\n\n---\n{content[:8000]}\n\n[... 摘要生成异常: {str(e)} ...]'
 
 
@@ -698,6 +708,7 @@ def _web_search(args, lib_dir, bm, gid, **extra):
     if result:
         return result, None
 
+    logger.warning("网页搜索失败: query=%s", query)
     return f'搜索失败: 无法连接到搜索引擎。如需使用代理，请设置环境变量 HTTPS_PROXY', None
 
 

@@ -1,6 +1,9 @@
 """Markdown处理相关工具函数"""
+import logging
 import markdown
 import re
+
+logger = logging.getLogger(__name__)
 
 def process_markdown(md_content):
     """处理Markdown内容并渲染为HTML
@@ -177,12 +180,12 @@ def process_markdown(md_content):
     
     # 调试输出：显示处理后的列表内容
     if list_indents:
-        print(f"[列表处理] 检测到 {len(list_indents)} 个列表项")
-        print(f"[列表处理] 最小缩进: {min_indent}, 基准缩进: {base_indent}, 缩进单位: {indent_unit}")
+        logger.debug("[列表处理] 检测到 %d 个列表项", len(list_indents))
+        logger.debug("[列表处理] 最小缩进: %d, 基准缩进: %d, 缩进单位: %d", min_indent, base_indent, indent_unit)
         # 显示处理后的前5个列表行
         list_lines = [line for line in fixed_lines if re.match(r'^\s*[\-\*\+]\s+', line)]
         for i, line in enumerate(list_lines[:5]):
-            print(f"[列表 {i+1}] 缩进{len(line) - len(line.lstrip())}空格: {repr(line[:50])}")
+            logger.debug("[列表 %d] 缩进%d空格: %s", i + 1, len(line) - len(line.lstrip()), repr(line[:50]))
     
     # 手动处理删除线（GFM语法）~~text~~ -> <del>text</del>
     # 需要在markdown处理前先保护删除线内容
@@ -220,7 +223,7 @@ def process_markdown(md_content):
         html_content = html_content.replace(placeholder, f'<del>{text}</del>')
     
     # 恢复Mermaid代码块
-    print(f"[Mermaid] 共提取了 {len(mermaid_blocks)} 个Mermaid代码块")
+    logger.debug("[Mermaid] 共提取了 %d 个Mermaid代码块", len(mermaid_blocks))
     for i, code in enumerate(mermaid_blocks):
         placeholder = f'MERMAIDBLOCKPLACEHOLDER{i}ENDPLACEHOLDER'
         # 清理代码：移除首尾空白，但保留内部换行
@@ -243,20 +246,20 @@ def process_markdown(md_content):
         for replacement in replacements:
             if replacement in html_content:
                 html_content = html_content.replace(replacement, wrapped_content)
-                print(f"[Mermaid {i}] 替换了 {replacement}")
+                logger.debug("[Mermaid %d] 替换了 %s", i, replacement)
                 replaced = True
                 break
 
         if not replaced:
-            print(f"[警告] Mermaid {i} 的占位符未找到: {placeholder}")
+            logger.warning("[Mermaid %d] 占位符未找到: %s", i, placeholder)
             # 如果都没找到，尝试更宽泛的搜索
             pattern = rf'<[^>]*>{re.escape(placeholder)}[^<]*</[^>]*>|{re.escape(placeholder)}'
             matches = re.findall(pattern, html_content)
             if matches:
-                print(f"[调试] 找到匹配的模式: {matches[:3]}")  # 只显示前3个匹配
+                logger.debug("[Mermaid %d] 找到匹配的模式: %s", i, matches[:3])  # 只显示前3个匹配
 
     # 恢复数学公式，并包装在适当的HTML标签中
-    print(f"[数学公式] 共提取了 {len(math_blocks)} 个数学公式")
+    logger.debug("[数学公式] 共提取了 %d 个数学公式", len(math_blocks))
     for i, (math_type, math_content) in enumerate(math_blocks):
         if math_type == 'block':
             placeholder = f'MATHBLOCKPLACEHOLDER{i}ENDPLACEHOLDER'
@@ -265,20 +268,20 @@ def process_markdown(md_content):
             # 尝试多种替换方式
             if f'<p>{placeholder}</p>' in html_content:
                 html_content = html_content.replace(f'<p>{placeholder}</p>', wrapped_content)
-                print(f"[块级公式 {i}] 替换了 <p> 包装的占位符")
+                logger.debug("[块级公式 %d] 替换了 <p> 包装的占位符", i)
             elif placeholder in html_content:
                 html_content = html_content.replace(placeholder, wrapped_content)
-                print(f"[块级公式 {i}] 替换了普通占位符")
+                logger.debug("[块级公式 %d] 替换了普通占位符", i)
             else:
-                print(f"[警告] 块级公式 {i} 的占位符未找到: {placeholder}")
+                logger.warning("[块级公式 %d] 占位符未找到: %s", i, placeholder)
         else:
             placeholder = f'MATHINLINEPLACEHOLDER{i}ENDPLACEHOLDER'
             # 行内公式包装在span中
             wrapped_content = f'<span class="math-inline">{math_content}</span>'
             if placeholder in html_content:
                 html_content = html_content.replace(placeholder, wrapped_content)
-                print(f"[行内公式 {i}] 成功替换")
+                logger.debug("[行内公式 %d] 成功替换", i)
             else:
-                print(f"[警告] 行内公式 {i} 的占位符未找到: {placeholder}")
+                logger.warning("[行内公式 %d] 占位符未找到: %s", i, placeholder)
 
     return html_content
