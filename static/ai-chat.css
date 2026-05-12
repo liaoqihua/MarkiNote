@@ -498,6 +498,96 @@
     margin: 6px 0;
 }
 
+/* AI 消息内表格 */
+.ai-msg-bubble table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    font-size: 13px;
+}
+
+.ai-msg-bubble th,
+.ai-msg-bubble td {
+    border: 1px solid var(--border-color);
+    padding: 6px 10px;
+    text-align: left;
+}
+
+.ai-msg-bubble th {
+    background: var(--hover-bg);
+    font-weight: 600;
+}
+
+.ai-msg-bubble tr:nth-child(even) td {
+    background: var(--hover-bg);
+}
+
+.ai-msg.user .ai-msg-bubble th {
+    background: rgba(255,255,255,0.15);
+}
+
+.ai-msg.user .ai-msg-bubble td {
+    border-color: rgba(255,255,255,0.2);
+}
+
+.ai-msg.user .ai-msg-bubble tr:nth-child(even) td {
+    background: rgba(255,255,255,0.08);
+}
+
+/* AI 消息内图片 */
+.ai-msg-bubble img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm);
+    margin: 8px 0;
+}
+
+/* AI 消息内分割线 */
+.ai-msg-bubble hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 12px 0;
+}
+
+/* AI 消息内任务列表 */
+.ai-msg-bubble input[type="checkbox"] {
+    margin-right: 6px;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* AI 消息内 Mermaid 图表容器 */
+.ai-mermaid-container {
+    margin: 10px 0;
+    padding: 12px;
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.ai-mermaid-container .mermaid {
+    max-width: 100%;
+}
+
+.ai-mermaid-container svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* 用户消息中的特殊元素适配 */
+.ai-msg.user .ai-msg-bubble hr {
+    border-top-color: rgba(255,255,255,0.2);
+}
+
+.ai-msg.user .ai-msg-bubble .ai-mermaid-container {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.15);
+}
+
 /* 用户消息操作按钮 */
 .ai-msg-actions {
     display: flex;

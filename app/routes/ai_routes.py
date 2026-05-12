@@ -13,6 +13,35 @@ import requests as http_requests
 ai_bp = Blueprint('ai', __name__)
 logger = logging.getLogger(__name__)
 
+
+@ai_bp.errorhandler(Exception)
+def _handle_ai_error(error):
+    """确保 AI 蓝图内的所有异常都以 JSON 格式返回，而不会泄露 HTML 错误页。"""
+    status_code = 500
+    if hasattr(error, 'code'):
+        status_code = error.code
+    elif isinstance(error, ValueError):
+        status_code = 400
+    message = str(error) if status_code != 500 else '服务器内部错误，请稍后重试'
+    logger.exception("AI 蓝图异常: status=%d", status_code)
+    return jsonify({'error': message}), status_code
+
+
+@ai_bp.errorhandler(400)
+def _handle_400(error):
+    return jsonify({'error': str(error) or '请求参数错误'}), 400
+
+
+@ai_bp.errorhandler(404)
+def _handle_404(error):
+    return jsonify({'error': str(error) or '资源不存在'}), 404
+
+
+@ai_bp.errorhandler(405)
+def _handle_405(error):
+    return jsonify({'error': '请求方法不允许'}), 405
+
+
 CONVERSATIONS_DIR = '.ai_conversations'
 BACKUPS_DIR = '.ai_backups'
 MAX_TOOL_ITERATIONS = 15
@@ -261,7 +290,9 @@ def manage_conversation(conv_id):
 
 @ai_bp.route('/api/ai/chat', methods=['POST'])
 def chat():
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': '请求体格式错误，需要 JSON'}), 400
     user_message = data.get('message', '').strip()
     conv_id = data.get('conversation_id', '')
     provider_id = data.get('provider', 'deepseek')
@@ -449,7 +480,6 @@ def chat():
         headers={
             'Cache-Control': 'no-cache',
             'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive',
         }
     )
 

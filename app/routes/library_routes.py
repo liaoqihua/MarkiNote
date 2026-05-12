@@ -243,6 +243,82 @@ def move_item():
     except Exception as e:
         return jsonify({'error': f'移动失败: {str(e)}'}), 500
 
+
+@library_bp.route('/api/library/move/batch', methods=['POST'])
+def move_items_batch():
+    """批量移动文件/文件夹到目标文件夹"""
+    data = request.get_json()
+    sources = data.get('sources', [])
+    target_path = data.get('target', '')
+
+    if not sources or not isinstance(sources, list):
+        return jsonify({'error': '源路径列表不能为空'}), 400
+    if len(sources) == 0:
+        return jsonify({'error': '源路径列表为空'}), 400
+
+    base_path = current_app.config['LIBRARY_FOLDER']
+    target_full = os.path.join(base_path, target_path) if target_path else base_path
+
+    # 安全检查
+    if not os.path.abspath(target_full).startswith(os.path.abspath(base_path)):
+        return jsonify({'error': '非法目标路径'}), 403
+
+    # 确保目标是文件夹
+    if os.path.isfile(target_full):
+        return jsonify({'error': '目标必须是文件夹'}), 400
+
+    os.makedirs(target_full, exist_ok=True)
+
+    results = []
+    errors = []
+
+    for source_path in sources:
+        source_full = os.path.join(base_path, source_path)
+
+        if not os.path.abspath(source_full).startswith(os.path.abspath(base_path)):
+            errors.append({'source': source_path, 'error': '非法源路径'})
+            continue
+
+        if not os.path.exists(source_full):
+            errors.append({'source': source_path, 'error': '源文件不存在'})
+            continue
+
+        # 不能移动到自身或子目录
+        if source_full == target_full:
+            errors.append({'source': source_path, 'error': '不能移动到自身'})
+            continue
+        if target_full.startswith(source_full + os.sep):
+            errors.append({'source': source_path, 'error': '不能移动到子目录'})
+            continue
+
+        try:
+            filename = os.path.basename(source_full)
+            new_path = os.path.join(target_full, filename)
+
+            if os.path.exists(new_path):
+                name, ext = os.path.splitext(filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{name}_{timestamp}{ext}"
+                new_path = os.path.join(target_full, filename)
+
+            shutil.move(source_full, new_path)
+            results.append({
+                'source': source_path,
+                'new_path': os.path.relpath(new_path, base_path).replace('\\', '/')
+            })
+        except Exception as e:
+            errors.append({'source': source_path, 'error': str(e)})
+
+    return jsonify({
+        'success': len(errors) == 0,
+        'moved': len(results),
+        'failed': len(errors),
+        'results': results,
+        'errors': errors,
+        'message': f'成功移动 {len(results)} 项' + (f'，{len(errors)} 项失败' if errors else '')
+    })
+
+
 @library_bp.route('/api/library/read', methods=['GET'])
 def read_file():
     """读取文件内容用于预览"""

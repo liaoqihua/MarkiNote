@@ -516,6 +516,70 @@ body.dark-mode .file-item.search-match {
     border-color: var(--primary-color);
 }
 
+/* ===== 拖拽排序/移动 ===== */
+.file-item[draggable="true"] {
+    cursor: grab;
+}
+
+.file-item[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+/* 正在被拖拽的源元素 */
+.file-item.dragging {
+    opacity: 0.4;
+    background: var(--hover-bg);
+}
+
+/* 文件夹作为放置目标时的悬停高亮 */
+.file-item.folder.drag-over {
+    background: var(--selected-bg);
+    border: 2px dashed var(--primary-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* 文件项作为放置目标时的禁用样式（非文件夹） */
+.file-item.file.drag-over-invalid {
+    background: rgba(239, 68, 68, 0.08);
+    border: 2px dashed var(--danger-color);
+    border-radius: var(--radius-md);
+    cursor: no-drop;
+}
+
+/* 拖拽时的自定义幽灵元素 */
+.drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 10000;
+    background: var(--sidebar-bg);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--radius-md);
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--text-color);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.drag-ghost .ghost-count {
+    background: var(--primary-color);
+    color: white;
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 22px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
 .loading, .empty-state {
     text-align: center;
     padding: 40px 20px;
@@ -1764,8 +1828,7 @@ body.editing-source #sourceCloseBtn {
     }
 }
 /* ===== PDF 导出选择 ===== */
-.file-select,
-.file-select-placeholder {
+.file-select {
     width: 22px;
     min-width: 22px;
     display: flex;
@@ -1778,10 +1841,6 @@ body.editing-source #sourceCloseBtn {
     height: 15px;
     cursor: pointer;
     accent-color: var(--primary-color);
-}
-
-.file-item.folder .file-select-placeholder {
-    opacity: 0;
 }
 
 .footer-btn:disabled,

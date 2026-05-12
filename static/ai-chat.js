@@ -43,6 +43,10 @@
 
     // --- 初始化 ---
     function initAI() {
+        // 配置 marked.js（用于 Markdown 渲染）
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({ breaks: true, gfm: true });
+        }
         loadAISettings();
         setupAIListeners();
         updateModelOptions();
@@ -608,6 +612,8 @@
                 }
                 hideHistory();
                 scrollToBottom();
+                // 渲染 Mermaid 图表
+                renderMermaidInChat();
             }
         } catch (e) {
             console.error('加载对话失败:', e);
@@ -722,9 +728,17 @@
             });
 
             if (!resp.ok) {
-                const err = await resp.json();
+                let errMsg = '请求失败';
+                try {
+                    const err = await resp.json();
+                    errMsg = err.error || err.message || errMsg;
+                } catch (_) {
+                    // 响应体不是 JSON（如 HTML 错误页），使用状态码 + 状态文本
+                    const text = await resp.text().catch(() => '');
+                    errMsg = `HTTP ${resp.status}${resp.statusText ? ' ' + resp.statusText : ''}${text ? ': ' + text.substring(0, 200) : ''}`;
+                }
                 removeTypingIndicator(bubbleEl);
-                bubbleEl.innerHTML = renderChatMarkdown(err.error || '请求失败');
+                bubbleEl.innerHTML = renderChatMarkdown(errMsg);
                 if (resp.status === 401 || resp.status === 403) {
                     _aiKeyValidated = false;
                     updateApiStatus();
@@ -883,6 +897,8 @@
             aiAbortController = null;
             updateSendButton();
             scrollToBottom();
+            // 渲染 Mermaid 图表（流式完成/中断后）
+            renderMermaidInChat();
             if (typeof loadLibrary === 'function') {
                 setTimeout(() => loadLibrary(currentPath), 500);
             }
@@ -952,6 +968,8 @@
         } else {
             bubble.innerHTML = content ? renderChatMarkdown(content) : '';
             div.appendChild(bubble);
+            // 渲染 Mermaid 图表
+            renderMermaidInChat();
         }
         aiMessages.appendChild(div);
         scrollToBottom();
@@ -1107,73 +1125,66 @@
         aiInput.style.height = Math.min(aiInput.scrollHeight, 120) + 'px';
     }
 
-    // --- Markdown 渲染（轻量级） ---
+    // --- Markdown 渲染（使用 marked.js） ---
     function renderChatMarkdown(text) {
         if (!text) return '';
 
-        const codeBlocks = [];
-        text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-            codeBlocks.push({ lang, code: code.trimEnd() });
-            return `\x00CB${codeBlocks.length - 1}\x00`;
-        });
+        // 使用 marked.js 进行完整的 Markdown 渲染
+        if (typeof marked !== 'undefined') {
+            try {
+                return marked.parse(text);
+            } catch (e) {
+                console.error('Markdown 解析错误:', e);
+            }
+        }
 
-        const inlines = [];
-        text = text.replace(/`([^`\n]+)`/g, (_, code) => {
-            inlines.push(code);
-            return `\x00IC${inlines.length - 1}\x00`;
-        });
+        // 降级方案：基础 HTML 转义 + 换行
+        return '<p>' + escapeHtml(text).replace(/\n/g, '<br>') + '</p>';
+    }
 
-        text = escapeHtml(text);
+    // --- Mermaid 图表渲染 ---
+    async function renderMermaidInChat() {
+        if (!window.mermaid) return;
 
-        text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+        const mermaidBlocks = aiMessages.querySelectorAll('pre code.language-mermaid');
+        if (mermaidBlocks.length === 0) return;
 
-        text = text.replace(/^#### (.+)$/gm, '<h5>$1</h5>');
-        text = text.replace(/^### (.+)$/gm, '<h4>$1</h4>');
-        text = text.replace(/^## (.+)$/gm, '<h3>$1</h3>');
-        text = text.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+        // 初始化 mermaid
+        try {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'default',
+                securityLevel: 'loose',
+            });
+        } catch (err) {
+            console.error('Mermaid 初始化失败:', err);
+            return;
+        }
 
-        // Group ordered list items (handles both tight and loose lists with blank lines)
-        text = text.replace(/((?:^\d+\. .+(?:\n|$))(?:\n*(?:^\d+\. .+(?:\n|$)))*)/gm, (match) => {
-            const items = match.split('\n').filter(line => /^\d+\. /.test(line))
-                .map(line => line.replace(/^\d+\. (.+)$/, '<li class="ol">$1</li>'));
-            return items.length ? '<ol>' + items.join('') + '</ol>' : match;
-        });
-        // Group unordered list items (handles both tight and loose lists with blank lines)
-        text = text.replace(/((?:^[-*] .+(?:\n|$))(?:\n*(?:^[-*] .+(?:\n|$)))*)/gm, (match) => {
-            const items = match.split('\n').filter(line => /^[-*] /.test(line))
-                .map(line => line.replace(/^[-*] (.+)$/, '<li>$1</li>'));
-            return items.length ? '<ul>' + items.join('') + '</ul>' : match;
-        });
-        text = text.replace(/(&gt; .+(?:\n&gt; .+)*)/g, (match) => {
-            const content = match.replace(/^&gt; /gm, '');
-            return `<blockquote>${content}</blockquote>`;
-        });
+        for (const codeBlock of mermaidBlocks) {
+            const pre = codeBlock.parentElement;
+            if (pre.classList.contains('mermaid-processed')) continue;
+            pre.classList.add('mermaid-processed');
 
-        text = text.replace(/\n{2,}/g, '</p><p>');
-        text = text.replace(/\n/g, '<br>');
+            const mermaidCode = codeBlock.textContent.trim();
+            if (!mermaidCode) continue;
 
-        text = text.replace(/\x00IC(\d+)\x00/g, (_, i) =>
-            `<code>${escapeHtml(inlines[parseInt(i)])}</code>`
-        );
-        text = text.replace(/\x00CB(\d+)\x00/g, (_, i) => {
-            const b = codeBlocks[parseInt(i)];
-            return `<pre><code class="language-${b.lang || ''}">${escapeHtml(b.code)}</code></pre>`;
-        });
+            try {
+                const container = document.createElement('div');
+                container.className = 'ai-mermaid-container';
 
-        return `<p>${text}</p>`
-            .replace(/<p><\/p>/g, '')
-            .replace(/<p>(<h[2-5]>)/g, '$1')
-            .replace(/(<\/h[2-5]>)<\/p>/g, '$1')
-            .replace(/<p>(<pre>)/g, '$1')
-            .replace(/(<\/pre>)<\/p>/g, '$1')
-            .replace(/<p>(<blockquote>)/g, '$1')
-            .replace(/(<\/blockquote>)<\/p>/g, '$1')
-            .replace(/<p>(<ol>)/g, '$1')
-            .replace(/(<\/ol>)<\/p>/g, '$1')
-            .replace(/<p>(<ul>)/g, '$1')
-            .replace(/(<\/ul>)<\/p>/g, '$1');
+                const mermaidDiv = document.createElement('div');
+                mermaidDiv.className = 'mermaid';
+                mermaidDiv.textContent = mermaidCode;
+                container.appendChild(mermaidDiv);
+
+                pre.replaceWith(container);
+                await mermaid.run({ nodes: [mermaidDiv] });
+            } catch (e) {
+                console.error('Mermaid 渲染错误:', e);
+                pre.classList.remove('mermaid-processed');
+            }
+        }
     }
 
     // --- 工具函数 ---
