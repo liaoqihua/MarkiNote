@@ -642,10 +642,6 @@ def _summarize_with_subagent(content, url, api_key, provider_id, model_id):
             return f'URL: {url}\n内容长度: {len(content)} 字符 (已截断)\n\n---\n{content[:8000]}\n\n[... 摘要生成失败: 未知提供商 ...]'
 
         summary_model = model_id
-        if provider_id == 'kimi':
-            summary_model = 'moonshot-v1-8k'
-        elif provider_id == 'deepseek':
-            summary_model = 'deepseek-chat'
 
         input_content = content[:20000]
 

@@ -7,16 +7,16 @@ PROVIDERS = {
         'name': 'DeepSeek',
         'base_url': 'https://api.deepseek.com',
         'models': [
-            {'id': 'deepseek-chat', 'name': 'DeepSeek-V3'},
+            {'id': 'deepseek-v4-pro', 'name': 'DeepSeek-V4 Pro'},
+            {'id': 'deepseek-v4-flash', 'name': 'DeepSeek-V4 Flash'},
+            {'id': 'deepseek-chat', 'name': 'DeepSeek-V3.2'},
         ]
     },
     'kimi': {
-        'name': 'Kimi (Moonshot)',
-        'base_url': 'https://api.moonshot.cn/v1',
+        'name': 'Kimi Code',
+        'base_url': 'https://api.kimi.com/coding/v1',
         'models': [
-            {'id': 'moonshot-v1-8k', 'name': 'Moonshot 8K'},
-            {'id': 'moonshot-v1-32k', 'name': 'Moonshot 32K'},
-            {'id': 'moonshot-v1-128k', 'name': 'Moonshot 128K'},
+            {'id': 'kimi-for-coding', 'name': 'Kimi Code'},
         ]
     }
 }
@@ -32,7 +32,11 @@ def validate_api_key(provider_id, api_key):
         return False, '未知提供商'
     try:
         url = f"{provider['base_url']}/models"
-        resp = requests.get(url, headers={'Authorization': f'Bearer {api_key}'}, timeout=10)
+        req_headers = {'Authorization': f'Bearer {api_key}'}
+        # Kimi For Coding 仅对白名单内的 Coding Agent 开放，需要伪装为 KimiCLI
+        if provider_id == 'kimi':
+            req_headers['User-Agent'] = 'KimiCLI/1.3'
+        resp = requests.get(url, headers=req_headers, timeout=10)
         if resp.status_code == 200:
             return True, '连接成功'
         elif resp.status_code == 401:
@@ -64,6 +68,9 @@ def stream_chat_completion(messages, tools, api_key, provider_id, model_id):
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json',
     }
+    # Kimi For Coding 仅对白名单内的 Coding Agent 开放，需要伪装为 KimiCLI
+    if provider_id == 'kimi':
+        headers['User-Agent'] = 'KimiCLI/1.3'
 
     body = {
         'model': model_id,
@@ -88,13 +95,25 @@ def stream_chat_completion(messages, tools, api_key, provider_id, model_id):
             return
 
         resp.encoding = 'utf-8'
+        yielded_any = False
+        raw_preview = []
         for line in resp.iter_lines(decode_unicode=True):
             if not line:
                 continue
-            if not line.startswith('data: '):
+            if len(raw_preview) < 5:
+                raw_preview.append(line[:200])
+            # 兼容 "data: xxx" 和 "data:xxx" 两种 SSE 格式（Kimi 无空格）
+            if line.startswith('data: '):
+                data_str = line[6:]
+            elif line.startswith('data:'):
+                data_str = line[5:]
+            else:
+                # 有些实现会发 event:/id: 行，跳过；记录前几条便于诊断
                 continue
-            data_str = line[6:]
             if data_str.strip() == '[DONE]':
+                if not yielded_any:
+                    yield {'type': 'error', 'message': f'API 返回空流（无 content/reasoning）。原始前几行: {raw_preview}'}
+                    return
                 yield {'type': 'done'}
                 return
 
@@ -111,12 +130,18 @@ def stream_chat_completion(messages, tools, api_key, provider_id, model_id):
             finish = choices[0].get('finish_reason')
 
             if 'content' in delta and delta['content']:
+                yielded_any = True
                 yield {'type': 'content', 'content': delta['content']}
+
+            if 'reasoning_content' in delta and delta['reasoning_content']:
+                yielded_any = True
+                yield {'type': 'reasoning', 'content': delta['reasoning_content']}
 
             if 'tool_calls' in delta:
                 for tc in delta['tool_calls']:
                     idx = tc.get('index', 0)
                     if 'id' in tc:
+                        yielded_any = True
                         yield {
                             'type': 'tool_call_start',
                             'index': idx,
@@ -124,6 +149,7 @@ def stream_chat_completion(messages, tools, api_key, provider_id, model_id):
                             'name': tc.get('function', {}).get('name', '')
                         }
                     if 'function' in tc and 'arguments' in tc['function']:
+                        yielded_any = True
                         yield {
                             'type': 'tool_call_args',
                             'index': idx,
@@ -131,14 +157,19 @@ def stream_chat_completion(messages, tools, api_key, provider_id, model_id):
                         }
 
             if finish == 'stop':
+                if not yielded_any:
+                    yield {'type': 'error', 'message': f'API 返回空流（finish=stop 但无内容）。原始前几行: {raw_preview}'}
+                    return
                 yield {'type': 'done'}
                 return
             elif finish == 'tool_calls':
                 yield {'type': 'tool_calls_complete'}
 
-        usage = data.get('usage') if 'data' in dir() else None
-        if usage:
-            yield {'type': 'usage', 'usage': usage}
+        # 循环自然结束（服务端未发 [DONE] 也未发 finish_reason）
+        if not yielded_any:
+            yield {'type': 'error', 'message': f'API 未返回任何内容。状态={resp.status_code}，原始前几行: {raw_preview}'}
+            return
+        yield {'type': 'done'}
 
     except requests.Timeout:
         yield {'type': 'error', 'message': 'API 请求超时（120秒）'}

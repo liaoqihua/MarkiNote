@@ -75,8 +75,10 @@ Currently supports the following AI services (all OpenAI API-compatible, easily 
 
 | Provider | Models |
 |----------|--------|
-| **DeepSeek** | DeepSeek-V3 |
-| **Kimi (Moonshot)** | Moonshot 8K / 32K / 128K |
+| **DeepSeek** | DeepSeek-V4 Pro / DeepSeek-V4 Flash / DeepSeek-V3.2 |
+| **Kimi Code** | Kimi Code (Subscription) |
+
+> 💡 AI settings (provider, model, API Key) are persisted to `ai_settings.json` in the data directory, so they won't be lost when clearing browser cache.
 
 ---
 
@@ -190,11 +192,12 @@ The app opens your browser automatically. You can also manually visit `http://lo
 
 ### Configure the AI Assistant
 
-1. Get an API Key: Visit [DeepSeek Platform](https://platform.deepseek.com/) or [Moonshot AI](https://platform.moonshot.cn/) to register and obtain an API Key
+1. Get an API Key: Visit [DeepSeek Platform](https://platform.deepseek.com/) or [Kimi Code Console](https://www.kimi.com/code/) to obtain an API Key
 2. Open the AI panel in the app (click the 🤖 button in the top right)
 3. Click the settings icon, select AI provider and model, enter your API Key
 4. Click "Validate" to confirm the connection, then start chatting!
 
+> 💡 **Config Storage**: Your API Key, provider, and model selections are automatically saved to the local config file `ai_settings.json` (in the data directory), no need to re-enter.
 > **Tip**: To use DuckDuckGo with the `web_search` tool, set the `HTTPS_PROXY` environment variable. By default, Bing search is used.
 
 ---
@@ -219,11 +222,12 @@ Uploaded Markdown / TXT files are saved in the document library directory:
   - Linux: `~/.local/share/MarkiNote/lib/` or `$XDG_DATA_HOME/MarkiNote/lib/`
 - Custom location: set `MARKINOTE_DATA_DIR`; the library becomes `$MARKINOTE_DATA_DIR/lib/`
 
-AI conversations and backups are stored in the same data directory:
+AI conversations, backups, and configuration are stored in the same data directory:
 
 ```text
 .ai_conversations/   AI conversation history
 .ai_backups/         AI change backups
+ai_settings.json     AI configuration (provider, model, API Key)
 ```
 
 Logs are written to both the console and a log file. Default log file locations:

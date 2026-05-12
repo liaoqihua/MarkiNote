@@ -11,6 +11,7 @@
     let aiShowingHistory = false;
     let userMsgCounter = 0;
     let aiAttachedFiles = [];
+    let _aiKeyValidated = null;  // null=未验证, true=验证成功, false=验证失败
 
     // --- DOM ---
     const aiPanel = document.getElementById('aiPanel');
@@ -36,6 +37,9 @@
     const aiContextClear = document.getElementById('aiContextClear');
     const aiAttachBtn = document.getElementById('aiAttachBtn');
     const aiAttachmentsEl = document.getElementById('aiAttachments');
+    const aiApiDot = document.getElementById('aiApiDot');
+    const aiApiWarning = document.getElementById('aiApiWarning');
+    const aiApiWarningBtn = document.getElementById('aiApiWarningBtn');
 
     // --- 初始化 ---
     function initAI() {
@@ -57,6 +61,16 @@
         aiValidateKeyBtn.addEventListener('click', validateKey);
         if (aiContextClear) aiContextClear.addEventListener('click', clearContext);
         aiAttachBtn.addEventListener('click', showFilePicker);
+
+        // API 状态指示灯和警告
+        if (aiApiDot) aiApiDot.addEventListener('click', () => toggleSettings());
+        if (aiApiWarningBtn) aiApiWarningBtn.addEventListener('click', () => { toggleSettings(); });
+        aiApiKeyInput.addEventListener('input', () => {
+            _aiKeyValidated = null;
+            aiKeyStatus.className = 'ai-key-status';
+            aiKeyStatus.style.display = 'none';
+            updateApiStatus();
+        });
 
         aiInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -83,6 +97,9 @@
         aiSettingsPanel.classList.toggle('show');
         if (aiSettingsPanel.classList.contains('show')) {
             hideHistory();
+            if (aiApiWarning) aiApiWarning.classList.remove('show');
+        } else {
+            updateApiStatus();
         }
     }
 
@@ -108,15 +125,29 @@
     }
 
     // --- 设置管理 ---
-    function loadAISettings() {
-        const provider = localStorage.getItem('aiProvider') || 'deepseek';
-        const model = localStorage.getItem('aiModel') || 'deepseek-chat';
-        const key = localStorage.getItem('aiApiKey') || '';
+    let _aiSettingsLoaded = false;
 
-        aiProviderSelect.value = provider;
-        updateModelOptions();
-        aiModelSelect.value = model;
-        aiApiKeyInput.value = key;
+    async function loadAISettings() {
+        try {
+            const resp = await fetch('/api/ai/settings');
+            const data = await resp.json();
+            if (data.success && data.settings) {
+                const s = data.settings;
+                aiProviderSelect.value = s.provider || 'deepseek';
+                updateModelOptions();
+                aiModelSelect.value = s.model || 'deepseek-v4-pro';
+                aiApiKeyInput.value = s.api_key || '';
+            }
+        } catch (e) {
+            // 网络错误时使用默认值
+            aiProviderSelect.value = 'deepseek';
+            updateModelOptions();
+            aiModelSelect.value = 'deepseek-v4-pro';
+            aiApiKeyInput.value = '';
+        }
+        _aiSettingsLoaded = true;
+
+        updateApiStatus();
 
         const panelOpen = localStorage.getItem('aiPanelOpen') === 'true';
         if (panelOpen) {
@@ -125,40 +156,76 @@
         }
     }
 
-    function saveAISettings() {
-        localStorage.setItem('aiProvider', aiProviderSelect.value);
-        localStorage.setItem('aiModel', aiModelSelect.value);
-        localStorage.setItem('aiApiKey', aiApiKeyInput.value);
+    async function saveAISettings() {
+        try {
+            await fetch('/api/ai/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider: aiProviderSelect.value,
+                    model: aiModelSelect.value,
+                    api_key: aiApiKeyInput.value
+                })
+            });
+        } catch (e) {
+            // 静默处理保存失败
+        }
+        updateApiStatus();
+    }
+
+    function updateApiStatus() {
+        const hasKey = aiApiKeyInput.value.trim().length > 0;
+        if (aiApiDot) {
+            if (!hasKey) {
+                aiApiDot.className = 'ai-api-dot missing';
+                aiApiDot.title = '未配置 API Key — 点击设置';
+            } else if (_aiKeyValidated === false) {
+                aiApiDot.className = 'ai-api-dot invalid';
+                aiApiDot.title = 'API Key 验证失败 — 点击设置';
+            } else if (_aiKeyValidated === true) {
+                aiApiDot.className = 'ai-api-dot configured';
+                aiApiDot.title = 'API Key 已验证通过';
+            } else {
+                // hasKey but not validated yet
+                aiApiDot.className = 'ai-api-dot configured';
+                aiApiDot.title = 'API Key 已配置（未验证）— 点击设置';
+            }
+        }
+        if (aiApiWarning) {
+            aiApiWarning.classList.toggle('show', !hasKey);
+        }
     }
 
     function onProviderChange() {
         updateModelOptions();
         saveAISettings();
+        _aiKeyValidated = null;
         aiKeyStatus.className = 'ai-key-status';
         aiKeyStatus.style.display = 'none';
+        updateApiStatus();
     }
 
     function updateModelOptions() {
         const models = {
             deepseek: [
-                { id: 'deepseek-chat', name: 'DeepSeek-V3' }
+                { id: 'deepseek-v4-pro', name: 'DeepSeek-V4 Pro' },
+                { id: 'deepseek-v4-flash', name: 'DeepSeek-V4 Flash' },
+                { id: 'deepseek-chat', name: 'DeepSeek-V3.2' }
             ],
             kimi: [
-                { id: 'moonshot-v1-8k', name: 'Moonshot 8K' },
-                { id: 'moonshot-v1-32k', name: 'Moonshot 32K' },
-                { id: 'moonshot-v1-128k', name: 'Moonshot 128K' }
+                { id: 'kimi-for-coding', name: 'Kimi Code' }
             ]
         };
 
         const provider = aiProviderSelect.value;
         const list = models[provider] || [];
+        const prevModel = aiModelSelect.value;
         aiModelSelect.innerHTML = list.map(m =>
             `<option value="${m.id}">${m.name}</option>`
         ).join('');
 
-        const saved = localStorage.getItem('aiModel');
-        if (saved && list.some(m => m.id === saved)) {
-            aiModelSelect.value = saved;
+        if (list.some(m => m.id === prevModel)) {
+            aiModelSelect.value = prevModel;
         }
     }
 
@@ -182,9 +249,13 @@
                 })
             });
             const data = await resp.json();
+            _aiKeyValidated = data.success;
             showKeyStatus(data.message, data.success);
+            updateApiStatus();
         } catch (e) {
+            _aiKeyValidated = false;
             showKeyStatus(t('validate_fail') + e.message, false);
+            updateApiStatus();
         } finally {
             aiValidateKeyBtn.disabled = false;
             aiValidateKeyBtn.textContent = t('validate');
@@ -654,6 +725,10 @@
                 const err = await resp.json();
                 removeTypingIndicator(bubbleEl);
                 bubbleEl.innerHTML = renderChatMarkdown(err.error || '请求失败');
+                if (resp.status === 401 || resp.status === 403) {
+                    _aiKeyValidated = false;
+                    updateApiStatus();
+                }
                 aiIsStreaming = false;
                 updateSendButton();
                 return;
@@ -742,6 +817,10 @@
                             }
 
                             case 'error':
+                                if (eventData.message && (eventData.message.includes('401') || eventData.message.includes('403') || eventData.message.includes('认证') || eventData.message.includes('auth') || eventData.message.includes('无效'))) {
+                                    _aiKeyValidated = false;
+                                    updateApiStatus();
+                                }
                                 if (needNewBubble) {
                                     currentBubble = document.createElement('div');
                                     currentBubble.className = 'ai-msg-bubble';

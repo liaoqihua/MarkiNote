@@ -59,6 +59,8 @@
             api_key_placeholder: '输入你的 API Key', validate: '验证', validating: '验证中...',
             enter_api_key: '请输入 API Key', set_api_key_first: '请先设置 API Key',
             validate_fail: '验证失败: ',
+                    api_not_configured: '请先配置 API Key',
+                    go_to_settings: '去设置',
             no_conversations: '暂无对话记录', load_failed: '加载失败',
             ai_welcome_title: 'AI 助手',
             ai_welcome_desc: '我可以帮你管理文档、编辑文件、搜索资料。',
@@ -149,6 +151,8 @@
             api_key_placeholder: 'Enter your API Key', validate: 'Validate', validating: 'Validating...',
             enter_api_key: 'Please enter API Key', set_api_key_first: 'Please set up API Key first',
             validate_fail: 'Validation failed: ',
+                    api_not_configured: 'Please configure API Key',
+                    go_to_settings: 'Settings',
             no_conversations: 'No conversations yet', load_failed: 'Failed to load',
             ai_welcome_title: 'AI Assistant',
             ai_welcome_desc: 'I can help you manage documents, edit files, and search for information.',
@@ -237,6 +241,8 @@
             api_key_placeholder: 'Entrez votre clé API', validate: 'Valider', validating: 'Validation...',
             enter_api_key: 'Entrez la clé API', set_api_key_first: 'Configurez la clé API',
             validate_fail: 'Échec : ',
+                    api_not_configured: 'Veuillez configurer la clé API',
+                    go_to_settings: 'Paramètres',
             no_conversations: 'Aucune conversation', load_failed: 'Échec du chargement',
             ai_welcome_title: 'Assistant IA',
             ai_welcome_desc: 'Je peux gérer vos documents, modifier des fichiers et rechercher des informations.',
@@ -325,6 +331,8 @@
             api_key_placeholder: 'APIキーを入力', validate: '検証', validating: '検証中...',
             enter_api_key: 'APIキーを入力してください', set_api_key_first: 'まずAPIキーを設定',
             validate_fail: '検証失敗: ',
+                    api_not_configured: 'APIキーを設定してください',
+                    go_to_settings: '設定へ',
             no_conversations: '会話履歴なし', load_failed: '読み込み失敗',
             ai_welcome_title: 'AIアシスタント',
             ai_welcome_desc: 'ドキュメント管理、ファイル編集、情報検索をお手伝いします。',
@@ -509,6 +517,10 @@
         _a('#aiInput', 'placeholder', 'input_placeholder');
         _a('#aiSendBtn', 'title', 'send');
         _a('#aiAttachBtn', 'title', 'attach_file');
+
+        // AI API warning
+        _s('#aiApiWarning span', 'api_not_configured');
+        _s('#aiApiWarningBtn', 'go_to_settings');
 
         // AI welcome
         const aw = document.querySelector('.ai-messages .ai-welcome');

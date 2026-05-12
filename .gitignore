@@ -8,4 +8,4 @@ build/
 dist/
 *.log
 MarkiNote_Data/
-.ai_*
+.ai_*ai_settings.json

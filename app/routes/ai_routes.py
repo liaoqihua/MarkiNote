@@ -35,8 +35,10 @@ def _load_conversation(conv_id):
     return None
 
 
-def _save_conversation(conv):
-    path = os.path.join(_conversations_dir(), f'{conv["id"]}.json')
+def _save_conversation(conv, conversations_dir=None):
+    if conversations_dir is None:
+        conversations_dir = _conversations_dir()
+    path = os.path.join(conversations_dir, f'{conv["id"]}.json')
     conv['updated_at'] = datetime.now().isoformat()
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(conv, f, ensure_ascii=False, indent=2)
@@ -63,13 +65,15 @@ def _generate_title(user_msg, assistant_msg, provider_id, model_id, api_key, lan
             return None
         url = f"{provider['base_url']}/chat/completions"
         title_model = model_id
-        if provider_id == 'kimi':
-            title_model = 'moonshot-v1-8k'
         title_prompt = _TITLE_PROMPTS.get(language, _TITLE_PROMPTS['zh-CN'])
-        resp = http_requests.post(url, headers={
+        req_headers = {
             'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json'
-        }, json={
+            'Content-Type': 'application/json',
+        }
+        # Kimi For Coding 仅对白名单内的 Coding Agent 开放
+        if provider_id == 'kimi':
+            req_headers['User-Agent'] = 'KimiCLI/1.3'
+        resp = http_requests.post(url, headers=req_headers, json={
             'model': title_model,
             'messages': [
                 {'role': 'system', 'content': title_prompt},
@@ -91,7 +95,7 @@ def _strip_messages_for_api(messages):
     """清理消息以符合 API 要求，移除内部字段"""
     cleaned = []
     for msg in messages:
-        m = {k: v for k, v in msg.items() if k in ('role', 'content', 'tool_calls', 'tool_call_id', 'name')}
+        m = {k: v for k, v in msg.items() if k in ('role', 'content', 'tool_calls', 'tool_call_id', 'name', 'reasoning_content')}
         if m.get('role') == 'assistant' and m.get('tool_calls'):
             if not m.get('content'):
                 m['content'] = None
@@ -121,6 +125,55 @@ def validate_key():
         return jsonify({'success': False, 'message': '缺少参数'}), 400
     ok, msg = validate_api_key(provider, api_key)
     return jsonify({'success': ok, 'message': msg})
+
+
+_SETTINGS_FILE = 'ai_settings.json'
+
+
+def _settings_path():
+    return os.path.join(current_app.config['DATA_DIR'], _SETTINGS_FILE)
+
+
+@ai_bp.route('/api/ai/settings', methods=['GET', 'POST'])
+def ai_settings():
+    """读取或保存 AI 设置（provider、model、api_key），存储在本地配置文件中。"""
+    if request.method == 'GET':
+        path = _settings_path()
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+            except (json.JSONDecodeError, Exception):
+                settings = {}
+        else:
+            settings = {}
+        return jsonify({
+            'success': True,
+            'settings': {
+                'provider': settings.get('provider', 'deepseek'),
+                'model': settings.get('model', 'deepseek-v4-pro'),
+                'api_key': settings.get('api_key', '')
+            }
+        })
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'message': '缺少参数'}), 400
+
+    settings = {}
+    if 'provider' in data:
+        settings['provider'] = data['provider']
+    if 'model' in data:
+        settings['model'] = data['model']
+    if 'api_key' in data:
+        settings['api_key'] = data['api_key']
+
+    try:
+        with open(_settings_path(), 'w', encoding='utf-8') as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'保存失败: {str(e)}'}), 500
 
 
 @ai_bp.route('/api/ai/conversations', methods=['GET'])
@@ -183,6 +236,8 @@ def manage_conversation(conv_id):
             dm['tool_meta'] = m['_tool_meta']
         if m.get('_reasoning'):
             dm['reasoning'] = m['_reasoning']
+        if m.get('reasoning_content'):
+            dm['reasoning'] = dm.get('reasoning', '') or m['reasoning_content']
         display_messages.append(dm)
 
     return jsonify({'success': True, 'conversation': {
@@ -198,7 +253,7 @@ def chat():
     user_message = data.get('message', '').strip()
     conv_id = data.get('conversation_id', '')
     provider_id = data.get('provider', 'deepseek')
-    model_id = data.get('model', 'deepseek-chat')
+    model_id = data.get('model', 'deepseek-v4-pro')
     api_key = data.get('api_key', '')
     context_file = data.get('context_file', '')
     language = data.get('language', 'zh-CN')
@@ -243,6 +298,11 @@ def chat():
 
     lib_dir = current_app.config['LIBRARY_FOLDER']
     bm = _get_backup_manager()
+    conv_dir_path = _conversations_dir()
+
+    def _save_conv(conv):
+        """generator 内部安全保存对话，避免 current_app 上下文丢失"""
+        _save_conversation(conv, conversations_dir=conv_dir_path)
 
     def generate():
         nonlocal conv
@@ -255,6 +315,7 @@ def chat():
 
         for iteration in range(MAX_TOOL_ITERATIONS):
             assistant_content = ''
+            assistant_reasoning = ''
             tool_calls_map = {}
 
             for event in stream_chat_completion(
@@ -264,6 +325,9 @@ def chat():
                 if etype == 'content':
                     assistant_content += event['content']
                     yield _sse_event('token', {'content': event['content']})
+                elif etype == 'reasoning':
+                    assistant_reasoning += event['content']
+                    yield _sse_event('reasoning', {'content': event['content']})
                 elif etype == 'tool_call_start':
                     idx = event['index']
                     tool_calls_map[idx] = {
@@ -283,7 +347,7 @@ def chat():
                         tool_calls_map[idx]['function']['arguments'] += event['arguments']
                 elif etype == 'error':
                     yield _sse_event('error', {'message': event['message']})
-                    _save_conversation(conv)
+                    _save_conv(conv)
                     return
                 elif etype in ('done', 'tool_calls_complete'):
                     break
@@ -292,10 +356,14 @@ def chat():
 
             if tool_calls:
                 asst_msg = {'role': 'assistant', 'content': assistant_content or '', 'tool_calls': tool_calls}
+                if assistant_reasoning:
+                    asst_msg['reasoning_content'] = assistant_reasoning
                 conv['messages'].append(asst_msg)
                 messages_for_api.append(_strip_messages_for_api([asst_msg])[0])
             else:
                 asst_msg = {'role': 'assistant', 'content': assistant_content or ''}
+                if assistant_reasoning:
+                    asst_msg['reasoning_content'] = assistant_reasoning
                 conv['messages'].append(asst_msg)
                 break
 
@@ -343,7 +411,7 @@ def chat():
                     'content': result[:5000]
                 })
 
-            _save_conversation(conv)
+            _save_conv(conv)
 
         if backup_group_id:
             bm.cleanup()
@@ -355,7 +423,7 @@ def chat():
                 conv['title'] = title
                 yield _sse_event('title_generated', {'title': title})
 
-        _save_conversation(conv)
+        _save_conv(conv)
         yield _sse_event('done', {'conversation_id': conv_id})
 
     return Response(
