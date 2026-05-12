@@ -792,6 +792,119 @@ body.dark-mode .file-item.search-match {
     scroll-margin-top: 16px;
 }
 
+/* ===== 实时编辑预览：左侧编辑器面板 ===== */
+.preview-editor-pane {
+    width: 45%;
+    min-width: 320px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border-color);
+    background: var(--sidebar-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.preview-editor-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-color);
+    flex-shrink: 0;
+    gap: 8px;
+}
+
+.preview-editor-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    white-space: nowrap;
+}
+
+.preview-editor-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    margin-left: 8px;
+}
+
+.preview-editor-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.preview-editor-actions .btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.preview-editor-textarea {
+    flex: 1;
+    width: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 24px 32px;
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-color);
+    background: var(--sidebar-bg);
+    tab-size: 4;
+    -moz-tab-size: 4;
+}
+
+.preview-editor-textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.5;
+}
+
+.preview-editor-textarea:focus {
+    outline: none;
+}
+
+/* 编辑模式下的预览区域（右侧实时预览） */
+.preview-content.edit-preview {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    border-left: none;
+    padding: 16px 32px;
+}
+
+/* 编辑按钮激活状态 */
+#toggleEditBtn.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+#toggleEditBtn.active:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
+/* 编辑器在右侧时反转布局 */
+.preview-body.editor-right {
+    flex-direction: row-reverse;
+}
+
+.preview-body.editor-right .preview-editor-pane {
+    border-right: none;
+    border-left: 1px solid var(--border-color);
+}
+
+/* 位置切换按钮的旋转指示 */
+.preview-body.editor-right #editorSwapBtn svg {
+    transform: scaleX(-1);
+}
+
 .welcome-message {
     text-align: center;
     padding: 80px 20px;

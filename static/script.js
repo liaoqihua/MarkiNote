@@ -4,6 +4,12 @@ let selectedFile = null;
 let contextMenuTarget = null;
 let selectedText = ''; // 存储选中的文本
 let isEditingSource = false; // 是否正在编辑源代码
+let isEditingPreview = false; // 是否正在实时编辑预览
+let previewEditUnsaved = false; // 编辑模式下是否有未保存的改动
+let _editorPosition = 'left'; // 编辑器位置：'left' | 'right'
+let _sidebarWasCollapsed = false; // 进入编辑前侧边栏是否已收起
+let _syncScrolling = false; // 是否正在同步滚动（防止循环触发）
+let _editDebounceTimer = null;
 let allFiles = []; // 存储所有文件用于搜索
 let hasUnsavedChanges = false; // 是否有未保存的改动
 let selectedExportFiles = new Set(); // 多文档 PDF 导出选中的文件
@@ -41,6 +47,12 @@ const tocToggleBtn = document.getElementById('tocToggleBtn');
 const tocCloseBtn = document.getElementById('tocCloseBtn');
 const previewPanel = document.querySelector('.preview-panel');
 const toggleAllSelectBtn = document.getElementById('toggleAllSelectBtn');
+const toggleEditBtn = document.getElementById('toggleEditBtn');
+const previewEditorPane = document.getElementById('previewEditorPane');
+const editorTextarea = document.getElementById('editorTextarea');
+const editorSaveBtn = document.getElementById('editorSaveBtn');
+const editorCancelBtn = document.getElementById('editorCancelBtn');
+const editorSwapBtn = document.getElementById('editorSwapBtn');
 
 // 存储当前文件的原始markdown内容
 let currentMarkdownSource = '';
@@ -100,6 +112,11 @@ function setupEventListeners() {
     settingsBtn.addEventListener('click', openSettingsModal);
     fileInput.addEventListener('change', handleFileUpload);
     viewSourceBtn.addEventListener('click', openSourceModal);
+    toggleEditBtn.addEventListener('click', toggleEditMode);
+    editorSaveBtn.addEventListener('click', saveEditAndPreview);
+    editorCancelBtn.addEventListener('click', cancelEditMode);
+    editorSwapBtn.addEventListener('click', toggleEditorPosition);
+    editorTextarea.addEventListener('input', onEditorInput);
     exportCurrentPdfBtn.addEventListener('click', exportCurrentFileToPdf);
     exportSelectedPdfBtn.addEventListener('click', exportSelectedFilesToPdf);
     if (toggleAllSelectBtn) toggleAllSelectBtn.addEventListener('click', toggleAllFileSelection);
@@ -340,6 +357,11 @@ function handleFileClick(path, type) {
 
 // 选中文件
 function selectFile(path) {
+    // 如果正在编辑模式且选择了不同的文件，先退出编辑
+    if (isEditingPreview && selectedFile !== path) {
+        forceExitEditMode();
+    }
+
     selectedFile = path;
     
     // 更新UI选中状态
@@ -352,6 +374,7 @@ function selectFile(path) {
     
     // 启用查看源代码和当前文档 PDF 导出按钮
     viewSourceBtn.disabled = false;
+    toggleEditBtn.disabled = false;
     exportCurrentPdfBtn.disabled = false;
     if (tocToggleBtn) tocToggleBtn.disabled = false;
 
@@ -364,6 +387,11 @@ function selectFile(path) {
 // 预览文件
 // silent=true 时不显示"加载中"提示，用于后台定时刷新
 async function previewFile(path, silent = false) {
+    // 编辑模式下不接受静默刷新，避免覆盖用户正在编辑的内容
+    if (silent && isEditingPreview) {
+        return;
+    }
+
     if (!silent) {
         previewContent.innerHTML = '<div class="loading">' + t('loading') + '</div>';
         previewTitle.textContent = t('loading');
@@ -918,6 +946,7 @@ async function deleteItem(path, type = 'file') {
                 previewTitle.textContent = t('select_file_preview');
                 currentFilePath.textContent = '';
                 viewSourceBtn.disabled = true;
+                toggleEditBtn.disabled = true;
                 exportCurrentPdfBtn.disabled = true;
             }
             
@@ -1301,6 +1330,348 @@ function closeSourceModal() {
         document.body.classList.remove('editing-source');
     }
     sourceModal.classList.remove('show');
+}
+
+// ===== 实时编辑预览功能 =====
+
+// 切换编辑模式（左右分栏：左侧编辑器 + 右侧实时预览）
+function toggleEditMode() {
+    if (!selectedFile || !currentMarkdownSource) {
+        showError(t('no_source'));
+        return;
+    }
+
+    if (isEditingPreview) {
+        // 退出编辑模式
+        exitEditMode();
+    } else {
+        // 进入编辑模式
+        enterEditMode();
+    }
+}
+
+function enterEditMode() {
+    isEditingPreview = true;
+    previewEditUnsaved = false;
+
+    // 更新按钮状态
+    toggleEditBtn.classList.add('active');
+    const btnText = toggleEditBtn.querySelector('.btn-text');
+    if (btnText) btnText.textContent = t('preview_mode');
+
+    // 隐藏 TOC
+    if (previewToc) previewToc.style.display = 'none';
+
+    // 加载并应用编辑器位置设置
+    loadEditorPosition();
+    applyEditorPosition();
+
+    // 显示编辑器面板
+    previewEditorPane.style.display = 'flex';
+    previewContent.classList.add('edit-preview');
+
+    // 自动收起侧边栏（不持久化，避免 F5 刷新后仍收起）
+    const appContainer = document.querySelector('.app-container');
+    _sidebarWasCollapsed = appContainer.classList.contains('sidebar-collapsed');
+    setSidebarCollapsed(true, false);
+
+    // 设置编辑器内容，聚焦并将光标置于开头
+    editorTextarea.value = currentMarkdownSource;
+    editorTextarea.focus();
+    editorTextarea.scrollTop = 0;
+    editorTextarea.setSelectionRange(0, 0);
+
+    // 初始化 marked 配置
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+    }
+
+    // 实时渲染初始内容
+    renderLivePreview();
+
+    // 禁用查看源代码按钮（编辑模式下用不到）
+    viewSourceBtn.disabled = true;
+
+    // 注册 Ctrl+S 快捷键
+    document.addEventListener('keydown', handleEditKeydown);
+
+    // 注册同步滚动事件
+    editorTextarea.addEventListener('scroll', onEditorScroll, { passive: true });
+    previewContent.addEventListener('scroll', onPreviewScrollInEdit, { passive: true });
+}
+
+function exitEditMode() {
+    // 如果有未保存的改动，提示用户
+    if (previewEditUnsaved) {
+        if (!confirm(t('unsaved_exit_edit'))) {
+            return;
+        }
+    }
+
+    isEditingPreview = false;
+    previewEditUnsaved = false;
+
+    // 恢复按钮状态
+    toggleEditBtn.classList.remove('active');
+    const btnText = toggleEditBtn.querySelector('.btn-text');
+    if (btnText) btnText.textContent = t('edit');
+
+    // 显示 TOC
+    if (previewToc) previewToc.style.display = '';
+
+    // 恢复侧边栏状态（不持久化，保持用户原始偏好）
+    setSidebarCollapsed(_sidebarWasCollapsed, false);
+
+    // 移除编辑器位置 class
+    const previewBody = document.querySelector('.preview-body');
+    if (previewBody) previewBody.classList.remove('editor-right');
+
+    // 隐藏编辑器面板
+    previewEditorPane.style.display = 'none';
+    previewContent.classList.remove('edit-preview');
+
+    // 恢复查看源代码按钮
+    viewSourceBtn.disabled = false;
+
+    // 清除 debounce timer
+    if (_editDebounceTimer) {
+        clearTimeout(_editDebounceTimer);
+        _editDebounceTimer = null;
+    }
+
+    // 移除快捷键监听
+    document.removeEventListener('keydown', handleEditKeydown);
+
+    // 移除同步滚动监听
+    editorTextarea.removeEventListener('scroll', onEditorScroll);
+    previewContent.removeEventListener('scroll', onPreviewScrollInEdit);
+
+    // 从服务器重新加载预览（确保显示的是已保存内容）
+    previewFile(selectedFile);
+}
+
+// 编辑器输入事件 - 带防抖的实时预览
+function onEditorInput() {
+    previewEditUnsaved = true;
+
+    // 更新 currentMarkdownSource 以便其他功能使用
+    currentMarkdownSource = editorTextarea.value;
+
+    // 防抖渲染
+    if (_editDebounceTimer) clearTimeout(_editDebounceTimer);
+    _editDebounceTimer = setTimeout(() => {
+        renderLivePreview();
+    }, 300);
+}
+
+// 客户端实时渲染 Markdown 预览
+function renderLivePreview() {
+    const mdText = editorTextarea.value;
+
+    if (typeof marked === 'undefined') {
+        // 如果 marked 未加载，使用简单的转义显示
+        previewContent.innerHTML = `<div class="markdown-body"><pre>${escapeHtml(mdText)}</pre></div>`;
+        return;
+    }
+
+    try {
+        const html = marked.parse(mdText);
+        const scrollTop = previewContent.scrollTop;
+        previewContent.innerHTML = `<div class="markdown-body">${html}</div>`;
+
+        // 恢复滚动位置
+        previewContent.scrollTop = scrollTop;
+
+        // 添加代码块复制按钮
+        addCodeCopyButtons();
+
+        // 添加数学公式复制按钮
+        addMathCopyButtons();
+
+        // 渲染 Mermaid 图表
+        renderMermaidDiagrams();
+
+        // 触发 MathJax 渲染
+        renderMathJax();
+
+        // 重建目录
+        buildToc();
+    } catch (err) {
+        console.error('实时预览渲染失败:', err);
+        previewContent.innerHTML = `<div class="markdown-body"><pre>${escapeHtml(mdText)}</pre></div>`;
+    }
+}
+
+// Ctrl+S 保存
+async function saveEditAndPreview() {
+    if (!selectedFile) return;
+
+    const newContent = editorTextarea.value;
+
+    try {
+        const response = await fetch('/api/library/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: selectedFile, content: newContent })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showSuccess(t('save_success'));
+            currentMarkdownSource = newContent;
+            previewEditUnsaved = false;
+        } else {
+            showError(data.error || t('save_fail'));
+        }
+    } catch (error) {
+        showError(t('save_fail') + ': ' + error.message);
+    }
+}
+
+// 取消编辑模式
+function cancelEditMode() {
+    exitEditMode();
+}
+
+// 强制退出编辑模式（不提示保存）
+function forceExitEditMode() {
+    isEditingPreview = false;
+    previewEditUnsaved = false;
+
+    toggleEditBtn.classList.remove('active');
+    const btnText = toggleEditBtn.querySelector('.btn-text');
+    if (btnText) btnText.textContent = t('edit');
+
+    if (previewToc) previewToc.style.display = '';
+
+    // 恢复侧边栏状态（不持久化，保持用户原始偏好）
+    setSidebarCollapsed(_sidebarWasCollapsed, false);
+
+    // 移除编辑器位置 class
+    const previewBody = document.querySelector('.preview-body');
+    if (previewBody) previewBody.classList.remove('editor-right');
+
+    previewEditorPane.style.display = 'none';
+    previewContent.classList.remove('edit-preview');
+    viewSourceBtn.disabled = false;
+
+    if (_editDebounceTimer) {
+        clearTimeout(_editDebounceTimer);
+        _editDebounceTimer = null;
+    }
+    document.removeEventListener('keydown', handleEditKeydown);
+    editorTextarea.removeEventListener('scroll', onEditorScroll);
+    previewContent.removeEventListener('scroll', onPreviewScrollInEdit);
+}
+
+// 切换编辑器位置（左/右）
+function toggleEditorPosition() {
+    _editorPosition = _editorPosition === 'left' ? 'right' : 'left';
+    try { localStorage.setItem('editorPosition', _editorPosition); } catch (e) {}
+    applyEditorPosition();
+}
+
+// 加载编辑器位置设置
+function loadEditorPosition() {
+    try {
+        const saved = localStorage.getItem('editorPosition');
+        if (saved === 'right' || saved === 'left') {
+            _editorPosition = saved;
+        }
+    } catch (e) {}
+}
+
+// 应用编辑器位置（通过 class 控制 CSS）
+function applyEditorPosition() {
+    const previewBody = document.querySelector('.preview-body');
+    if (!previewBody) return;
+    if (_editorPosition === 'right') {
+        previewBody.classList.add('editor-right');
+    } else {
+        previewBody.classList.remove('editor-right');
+    }
+}
+
+// 设置侧边栏收起/展开
+// save: 是否持久化到 localStorage（用户手动切换时保存，自动收起/恢复时不保存）
+function setSidebarCollapsed(collapsed, save = true) {
+    const appContainer = document.querySelector('.app-container');
+    const collapseIcon = document.getElementById('collapseIcon');
+    const expandIcon = document.getElementById('expandIcon');
+    if (!appContainer) return;
+
+    if (collapsed) {
+        appContainer.classList.add('sidebar-collapsed');
+    } else {
+        appContainer.classList.remove('sidebar-collapsed');
+    }
+
+    if (collapseIcon && expandIcon) {
+        collapseIcon.style.display = collapsed ? 'none' : 'block';
+        expandIcon.style.display = collapsed ? 'block' : 'none';
+    }
+
+    if (save) {
+        try { localStorage.setItem('sidebarCollapsed', collapsed ? 'true' : 'false'); } catch (e) {}
+    }
+}
+
+// 编辑器滚动时同步预览滚动
+function onEditorScroll() {
+    if (_syncScrolling) return;
+    _syncScrolling = true;
+
+    const editor = editorTextarea;
+    const preview = previewContent;
+
+    // 计算编辑器滚动比例
+    const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
+    if (editorMaxScroll <= 0) { _syncScrolling = false; return; }
+    const editorRatio = editor.scrollTop / editorMaxScroll;
+
+    // 应用到预览区域
+    const previewMaxScroll = preview.scrollHeight - preview.clientHeight;
+    preview.scrollTop = editorRatio * previewMaxScroll;
+
+    requestAnimationFrame(() => { _syncScrolling = false; });
+}
+
+// 预览滚动时同步编辑器滚动
+function onPreviewScrollInEdit() {
+    if (_syncScrolling) return;
+    _syncScrolling = true;
+
+    const editor = editorTextarea;
+    const preview = previewContent;
+
+    // 计算预览滚动比例
+    const previewMaxScroll = preview.scrollHeight - preview.clientHeight;
+    if (previewMaxScroll <= 0) { _syncScrolling = false; return; }
+    const previewRatio = preview.scrollTop / previewMaxScroll;
+
+    // 应用到编辑器
+    const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
+    editor.scrollTop = previewRatio * editorMaxScroll;
+
+    requestAnimationFrame(() => { _syncScrolling = false; });
+}
+
+// 处理编辑模式下的键盘快捷键
+function handleEditKeydown(e) {
+    // Ctrl+S 或 Cmd+S 保存
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveEditAndPreview();
+    }
+    // Escape 退出编辑
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        exitEditMode();
+    }
 }
 
 // ===== 搜索功能 =====
