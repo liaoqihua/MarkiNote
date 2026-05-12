@@ -666,6 +666,15 @@ body.dark-mode .ai-msg-action-btn:hover {
     color: var(--text-color);
 }
 
+.ai-reasoning-chevron {
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+
+.ai-reasoning-chevron.expanded {
+    transform: rotate(90deg);
+}
+
 .ai-reasoning-content {
     display: none;
     font-size: 12px;
@@ -834,6 +843,168 @@ body.dark-mode .ai-msg-action-btn:hover {
 .ai-tool-rollback-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* ===== AI 操作进度卡片 ===== */
+.ai-progress-card {
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    margin: 4px 0;
+    max-width: 95%;
+    overflow: hidden;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    animation: toolCardSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ai-progress-card.completed {
+    border-color: #10b981;
+}
+
+.ai-progress-card-header {
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.ai-progress-card-header:hover {
+    background: var(--hover-bg);
+}
+
+.ai-progress-card-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-color);
+    font-size: 12px;
+    font-weight: 500;
+    overflow: hidden;
+}
+
+.ai-progress-card-title span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ai-progress-card-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+
+.ai-progress-card-icon .ai-tool-spinner {
+    width: 12px;
+    height: 12px;
+}
+
+.ai-progress-card-icon .ai-progress-check {
+    color: #10b981;
+    font-size: 12px;
+    font-weight: 600;
+    width: 12px;
+    text-align: center;
+}
+
+.ai-progress-chevron {
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+
+.ai-progress-chevron.expanded {
+    transform: rotate(90deg);
+}
+
+.ai-progress-card-body {
+    border-top: 1px solid var(--border-color);
+    max-height: 180px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+.ai-progress-card-body.collapsed {
+    max-height: 0;
+    border-top: none;
+    overflow: hidden;
+}
+
+.ai-progress-steps {
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ai-progress-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    transition: opacity 0.3s;
+}
+
+.ai-progress-step.running {
+    color: var(--text-color);
+}
+
+.ai-progress-step.done {
+    color: var(--text-secondary);
+}
+
+.ai-progress-step-icon {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ai-progress-step-icon .ai-tool-spinner {
+    width: 10px;
+    height: 10px;
+}
+
+.ai-progress-step-icon .ai-progress-check {
+    color: #10b981;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.ai-progress-step-text {
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 暗色主题适配 */
+body.dark-mode .ai-progress-card {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark-mode .ai-progress-card.completed {
+    border-color: #10b981;
+}
+
+/* 蓝色主题适配 */
+body.blue-mode .ai-progress-card {
+    background: #dbeafe;
+    border-color: #bfdbfe;
+}
+
+/* 粉色主题适配 */
+body.pink-mode .ai-progress-card {
+    background: #fce7f3;
+    border-color: #fbcfe8;
 }
 
 /* 文件附件区域 */

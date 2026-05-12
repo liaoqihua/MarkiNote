@@ -359,19 +359,27 @@ def chat():
         if messages_for_api and messages_for_api[0]['role'] == 'system':
             messages_for_api[0]['content'] = get_system_prompt(language)
 
+        yield _sse_event('progress', {'message': '正在分析您的请求...', 'phase': 'analyzing'})
+
         for iteration in range(MAX_TOOL_ITERATIONS):
             assistant_content = ''
             assistant_reasoning = ''
             tool_calls_map = {}
+            first_token_sent = False
 
             for event in stream_chat_completion(
                 messages_for_api, TOOL_DEFINITIONS, api_key, provider_id, model_id
             ):
                 etype = event['type']
                 if etype == 'content':
+                    if not first_token_sent:
+                        first_token_sent = True
                     assistant_content += event['content']
                     yield _sse_event('token', {'content': event['content']})
                 elif etype == 'reasoning':
+                    if not first_token_sent:
+                        yield _sse_event('progress', {'message': '正在深度思考...', 'phase': 'reasoning'})
+                        first_token_sent = True
                     assistant_reasoning += event['content']
                     yield _sse_event('reasoning', {'content': event['content']})
                 elif etype == 'tool_call_start':
@@ -381,6 +389,11 @@ def chat():
                         'type': 'function',
                         'function': {'name': event['name'], 'arguments': ''}
                     }
+                    yield _sse_event('progress', {
+                        'message': '准备调用工具: ' + event['name'],
+                        'phase': 'tool_call',
+                        'tool_name': event['name']
+                    })
                     yield _sse_event('tool_call', {
                         'call_id': event['id'],
                         'name': event['name'],
@@ -393,6 +406,7 @@ def chat():
                         tool_calls_map[idx]['function']['arguments'] += event['arguments']
                 elif etype == 'error':
                     logger.error("AI 流式响应错误: %s", event['message'])
+                    yield _sse_event('progress', {'message': '发生错误: ' + event['message'], 'phase': 'error'})
                     yield _sse_event('error', {'message': event['message']})
                     _save_conv(conv)
                     return
@@ -426,12 +440,23 @@ def chat():
                 except json.JSONDecodeError:
                     fn_args = {}
 
+                yield _sse_event('progress', {
+                    'message': '正在执行: ' + fn_name,
+                    'phase': 'tool_executing',
+                    'tool_name': fn_name
+                })
+
                 result, backup_info = execute_tool(
                     fn_name, fn_args, lib_dir, bm, backup_group_id,
                     api_key=api_key, provider_id=provider_id, model_id=model_id
                 )
 
                 logger.debug("工具执行: %s(%s) -> result_len=%d", fn_name, fn_args.get('path', fn_args.get('query', '')), len(result))
+                yield _sse_event('progress', {
+                    'message': '工具执行完成: ' + fn_name,
+                    'phase': 'tool_done',
+                    'tool_name': fn_name
+                })
                 yield _sse_event('tool_result', {
                     'call_id': tc['id'],
                     'name': fn_name,
@@ -464,6 +489,8 @@ def chat():
         if backup_group_id:
             bm.cleanup()
 
+        yield _sse_event('progress', {'message': '正在生成回复...', 'phase': 'generating'})
+
         user_msgs = [m for m in conv['messages'] if m['role'] == 'user']
         if len(user_msgs) == 1:
             title = _generate_title(user_message, assistant_content, provider_id, model_id, api_key, language)
@@ -472,6 +499,7 @@ def chat():
                 yield _sse_event('title_generated', {'title': title})
 
         _save_conv(conv)
+        yield _sse_event('progress', {'message': '完成', 'phase': 'done'})
         yield _sse_event('done', {'conversation_id': conv_id})
 
     return Response(

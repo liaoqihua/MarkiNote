@@ -420,11 +420,14 @@ function selectFile(path) {
 
 // 预览文件
 // silent=true 时不显示"加载中"提示，用于后台定时刷新
-async function previewFile(path, silent = false) {
+async function previewFile(path, silent = false, restoreScroll = false) {
     // 编辑模式下不接受静默刷新，避免覆盖用户正在编辑的内容
     if (silent && isEditingPreview) {
         return;
     }
+
+    // 在设置 loading 之前保存滚动位置，避免被 loading div 覆盖为 0
+    const savedScrollTop = previewContent.scrollTop;
 
     if (!silent) {
         previewContent.innerHTML = '<div class="loading">' + t('loading') + '</div>';
@@ -449,8 +452,6 @@ async function previewFile(path, silent = false) {
                 return;
             }
 
-            const scrollTop = previewContent.scrollTop;
-
             previewTitle.textContent = data.filename;
             currentMarkdownSource = data.raw_markdown || '';
             previewContent.innerHTML = `<div class="markdown-body">${data.html}</div>`;
@@ -470,9 +471,9 @@ async function previewFile(path, silent = false) {
             // 渲染完成后构建目录
             buildToc();
 
-            // 静默刷新时恢复滚动位置，避免阅读位置跳动
-            if (silent) {
-                previewContent.scrollTop = scrollTop;
+            // 静默刷新或 restoreScroll 模式下恢复滚动位置
+            if (silent || restoreScroll) {
+                previewContent.scrollTop = savedScrollTop;
             }
         } else if (!silent) {
             showError(data.error || t('preview_fail'));
@@ -1500,6 +1501,10 @@ function enterEditMode() {
     isEditingPreview = true;
     previewEditUnsaved = false;
 
+    // 保存当前预览滚动比例（在任何布局变更之前，因为 edit-preview class 会改变 clientHeight）
+    const prevMaxScroll = previewContent.scrollHeight - previewContent.clientHeight;
+    const savedPreviewRatio = prevMaxScroll > 0 ? previewContent.scrollTop / prevMaxScroll : 0;
+
     // 更新按钮状态
     toggleEditBtn.classList.add('active');
     const btnText = toggleEditBtn.querySelector('.btn-text');
@@ -1521,11 +1526,9 @@ function enterEditMode() {
     _sidebarWasCollapsed = appContainer.classList.contains('sidebar-collapsed');
     setSidebarCollapsed(true, false);
 
-    // 设置编辑器内容，聚焦并将光标置于开头
+    // 设置编辑器内容并聚焦
     editorTextarea.value = currentMarkdownSource;
     editorTextarea.focus();
-    editorTextarea.scrollTop = 0;
-    editorTextarea.setSelectionRange(0, 0);
 
     // 初始化 marked 配置
     if (typeof marked !== 'undefined') {
@@ -1538,6 +1541,21 @@ function enterEditMode() {
     // 实时渲染初始内容
     renderLivePreview();
 
+    // 布局稳定后，按比例同步预览和编辑器的滚动位置
+    requestAnimationFrame(() => {
+        // 恢复预览的滚动位置（edit-preview 布局下 clientHeight 已变化，用比例重新计算）
+        const previewMaxScroll = previewContent.scrollHeight - previewContent.clientHeight;
+        if (previewMaxScroll > 0) {
+            previewContent.scrollTop = savedPreviewRatio * previewMaxScroll;
+        }
+
+        // 同步编辑器滚动到相同比例位置
+        const editorMaxScroll = editorTextarea.scrollHeight - editorTextarea.clientHeight;
+        if (editorMaxScroll > 0) {
+            editorTextarea.scrollTop = savedPreviewRatio * editorMaxScroll;
+        }
+    });
+
     // 禁用查看源代码按钮（编辑模式下用不到）
     viewSourceBtn.disabled = true;
 
@@ -1549,13 +1567,17 @@ function enterEditMode() {
     previewContent.addEventListener('scroll', onPreviewScrollInEdit, { passive: true });
 }
 
-function exitEditMode() {
+async function exitEditMode() {
     // 如果有未保存的改动，提示用户
     if (previewEditUnsaved) {
         if (!confirm(t('unsaved_exit_edit'))) {
             return;
         }
     }
+
+    // 保存退出前的预览滚动比例（在移除 edit-preview 布局之前，clientHeight 会随布局变化）
+    const exitMaxScroll = previewContent.scrollHeight - previewContent.clientHeight;
+    const exitRatio = exitMaxScroll > 0 ? previewContent.scrollTop / exitMaxScroll : 0;
 
     isEditingPreview = false;
     previewEditUnsaved = false;
@@ -1595,8 +1617,16 @@ function exitEditMode() {
     editorTextarea.removeEventListener('scroll', onEditorScroll);
     previewContent.removeEventListener('scroll', onPreviewScrollInEdit);
 
-    // 从服务器重新加载预览（确保显示的是已保存内容）
-    previewFile(selectedFile);
+    // 从服务器重新加载预览（restoreScroll=true 保留阅读位置）
+    await previewFile(selectedFile, false, true);
+
+    // 布局稳定后按比例微调，处理内容变更或布局差异导致的偏移
+    requestAnimationFrame(() => {
+        const afterMaxScroll = previewContent.scrollHeight - previewContent.clientHeight;
+        if (afterMaxScroll > 0) {
+            previewContent.scrollTop = exitRatio * afterMaxScroll;
+        }
+    });
 }
 
 // 编辑器输入事件 - 带防抖的实时预览

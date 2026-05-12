@@ -5,11 +5,25 @@ import argparse
 import json
 import logging
 import os
+import signal
+import subprocess
+import sys
 import threading
+import time
 import webbrowser
 
 from app import create_app
-from app.runtime import get_data_dir, get_log_dir, is_frozen, setup_logging
+from app.runtime import (
+    get_data_dir,
+    get_log_dir,
+    get_pid_file,
+    is_frozen,
+    is_process_running,
+    read_pid_file,
+    remove_pid_file,
+    setup_logging,
+    write_pid_file,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -18,7 +32,20 @@ app = create_app()
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """解析启动参数。"""
-    parser = argparse.ArgumentParser(description='启动 MarkiNote 本地 Web 应用')
+    parser = argparse.ArgumentParser(
+        description='启动 MarkiNote 本地 Web 应用',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            '后台运行模式:\n'
+            '  MarkiNote on      启动后台运行\n'
+            '  MarkiNote off     关闭后台运行\n'
+            '  MarkiNote         交互式运行（默认）\n'
+        ),
+    )
+    parser.add_argument(
+        'mode', nargs='?', choices=['on', 'off'], default=None,
+        help='on=后台启动  off=关闭后台  不指定=交互模式',
+    )
     browser_group = parser.add_mutually_exclusive_group()
     browser_group.add_argument(
         '--open-browser',
@@ -57,9 +84,202 @@ def _open_browser(url: str, enabled: bool = True) -> None:
     timer.start()
 
 
+# ---------------------------------------------------------------------------
+# 后台运行模式管理
+# ---------------------------------------------------------------------------
+
+def _stop_background(pid: int | None) -> None:
+    """关闭后台运行的 MarkiNote 进程。"""
+    if pid is None:
+        print("MarkiNote 当前未在后台运行。")
+        return
+
+    if not is_process_running(pid):
+        print(f"PID {pid} 对应的进程已不存在，正在清理 PID 文件...")
+        remove_pid_file()
+        return
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print(f"已发送终止信号到 MarkiNote (PID: {pid})")
+
+        # 等待进程优雅退出（最多 5 秒）
+        for _ in range(50):
+            time.sleep(0.1)
+            if not is_process_running(pid):
+                print("MarkiNote 已停止运行。")
+                break
+        else:
+            # 超时则强制终止
+            if is_process_running(pid):
+                if not sys.platform.startswith("win"):
+                    os.kill(pid, signal.SIGKILL)
+                else:
+                    os.kill(pid, signal.SIGTERM)  # Windows 上 SIGTERM ≈ TerminateProcess
+                print("MarkiNote 已被强制终止。")
+    except OSError as exc:
+        print(f"无法终止进程 PID={pid}: {exc}")
+    finally:
+        remove_pid_file()
+
+
+def _daemonize_unix() -> None:
+    """Unix/Linux: 使用 double-fork 技术将当前进程转为守护进程。
+
+    执行后：
+    - 进程脱离终端
+    - 工作目录切换到 /
+    - stdio 重定向到 /dev/null 和日志文件
+    - PID 文件写入
+    """
+    # 第一次 fork：父进程退出
+    pid = os.fork()
+    if pid > 0:
+        # 等待子进程完成守护进程化并写入 PID 文件
+        pid_file = get_pid_file()
+        for _ in range(30):  # 最多等 3 秒
+            time.sleep(0.1)
+            actual_pid = read_pid_file()
+            if actual_pid is not None:
+                print(f"MarkiNote 已在后台启动 (PID: {actual_pid})")
+                sys.exit(0)
+        print("MarkiNote 后台启动失败，请检查日志文件。")
+        sys.exit(1)
+
+    # 创建新会话，脱离控制终端
+    os.setsid()
+
+    # 第二次 fork：防止进程重新获取控制终端
+    pid = os.fork()
+    if pid > 0:
+        sys.exit(0)
+
+    # 现在是守护进程
+    os.chdir("/")
+    os.umask(0o022)
+
+    # 重定向标准文件描述符
+    log_file_path = get_log_dir() / "markinote.log"
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    # 关闭所有已打开的文件描述符（保留 0/1/2 用于重定向）
+    try:
+        max_fd = os.sysconf("SC_OPEN_MAX")
+    except (ValueError, OSError):
+        max_fd = 1024
+    for fd in range(3, max_fd):
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+    # 重定向 stdio
+    with open(os.devnull, "r") as devnull_in, open(log_file_path, "a+") as log_out:
+        os.dup2(devnull_in.fileno(), 0)
+        os.dup2(log_out.fileno(), 1)
+        os.dup2(log_out.fileno(), 2)
+
+    # 写入 PID 文件
+    write_pid_file()
+
+    # 标记为后台模式，子进程后续流程读取此变量
+    os.environ["MARKINOTE_BACKGROUND"] = "1"
+
+
+def _start_background_windows(original_argv: list[str]) -> None:
+    """Windows: 使用 subprocess 启动分离的后台进程。"""
+    # 构建不含 'on' 的参数列表
+    new_argv = [a for a in original_argv if a != "on"]
+    if not new_argv:
+        new_argv = [sys.executable]
+    new_argv[0] = sys.executable
+
+    # 传递 MARKINOTE_BACKGROUND 环境变量，让子进程知道它运行在后台
+    env = os.environ.copy()
+    env["MARKINOTE_BACKGROUND"] = "1"
+
+    DETACHED_PROCESS = 0x00000008
+    CREATE_NO_WINDOW = 0x08000000
+
+    try:
+        subprocess.Popen(
+            new_argv,
+            env=env,
+            creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        print(f"无法启动后台进程: {exc}")
+        sys.exit(1)
+
+    # 等待子进程写入 PID 文件
+    pid_file = get_pid_file()
+    for _ in range(30):  # 最多等 3 秒
+        time.sleep(0.1)
+        if pid_file.exists():
+            pid = read_pid_file()
+            if pid is not None:
+                print(f"MarkiNote 已在后台启动 (PID: {pid})")
+                return
+
+    print("MarkiNote 后台启动失败，请检查日志文件。")
+    sys.exit(1)
+
+
+def handle_background_mode(args: argparse.Namespace, original_argv: list[str]) -> bool:
+    """处理后台运行模式。
+
+    Returns:
+        True:  当前进程应继续执行 run()（交互模式或守护进程子进程）
+        False: 当前进程应退出（off 模式或 on 模式下父进程已 fork）
+    """
+    # ----- off：关闭后台进程 -----
+    if args.mode == "off":
+        pid = read_pid_file()
+        _stop_background(pid)
+        return False
+
+    # ----- 交互模式 -----
+    if args.mode is None:
+        return True
+
+    # ----- on：启动后台进程 -----
+    # 检查是否已在运行
+    pid = read_pid_file()
+    if pid is not None and is_process_running(pid):
+        print(f"MarkiNote 已在后台运行 (PID: {pid})")
+        return False
+    if pid is not None:
+        # 清理过期的 PID 文件
+        remove_pid_file()
+
+    if sys.platform.startswith("win"):
+        _start_background_windows(original_argv)
+        return False
+    else:
+        _daemonize_unix()
+        # 守护进程子进程继续执行 run()
+        return True
+
+
 def run(argv: list[str] | None = None) -> None:
     """启动 MarkiNote。"""
     args = parse_args(argv)
+
+    # 处理后台运行模式（on/off）；交互模式直接继续
+    if not handle_background_mode(args, sys.argv):
+        sys.exit(0)
+
+    # 判断是否为后台守护模式（Unix fork 后子进程已设置此变量）
+    is_background = os.environ.get("MARKINOTE_BACKGROUND") == "1"
+
+    # 后台模式下写入 PID 文件（Unix 守护进程已在 _daemonize_unix 中写入，此处为 Windows 子进程写入）
+    if is_background:
+        write_pid_file()
 
     host = args.host or os.environ.get("MARKINOTE_HOST", "127.0.0.1")
     port = args.port or int(os.environ.get("MARKINOTE_PORT", "5000"))
@@ -79,9 +299,9 @@ def run(argv: list[str] | None = None) -> None:
         debug = not is_frozen()
         use_production_server = is_frozen()
 
-    log_file = setup_logging(debug=debug)
+    log_file = setup_logging(debug=debug, background=is_background)
 
-    open_browser = should_open_browser(args)
+    open_browser = should_open_browser(args) and not is_background
     url = f"http://localhost:{port}"
 
     logger.info("🚀 MarkiNote 启动中...")

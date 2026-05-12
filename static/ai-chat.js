@@ -407,6 +407,9 @@
         aiMessages.innerHTML = '';
         userMsgCounter = 0;
         aiAttachedFiles = [];
+        aiProgressCard = null;
+        aiProgressSteps = [];
+        aiProgressStepIndex = 0;
         renderAttachments();
         showWelcome();
         hideHistory();
@@ -708,6 +711,9 @@
         const bubbleEl = assistantEl.querySelector('.ai-msg-bubble');
         showTypingIndicator(bubbleEl);
 
+        // 创建进度卡片
+        createProgressCard(assistantEl);
+
         aiAbortController = new AbortController();
 
         try {
@@ -782,6 +788,53 @@
                             case 'conversation_id':
                                 aiConversationId = eventData.id;
                                 break;
+
+                            case 'progress':
+                                if (!typingRemoved) {
+                                    removeTypingIndicator(currentBubble);
+                                    typingRemoved = true;
+                                }
+                                addProgressStep(eventData.message, eventData.phase);
+                                break;
+
+                            case 'reasoning': {
+                                if (!typingRemoved) {
+                                    removeTypingIndicator(currentBubble);
+                                    typingRemoved = true;
+                                }
+                                // 确保推理面板存在
+                                let reasoningEl = assistantEl.querySelector('.ai-reasoning');
+                                if (!reasoningEl) {
+                                    reasoningEl = document.createElement('div');
+                                    reasoningEl.className = 'ai-reasoning';
+                                    reasoningEl.innerHTML = `
+                                        <button class="ai-reasoning-toggle">
+                                            <svg class="ai-reasoning-chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                                            </svg>
+                                            <span>${t('reasoning_title')}</span>
+                                        </button>
+                                        <div class="ai-reasoning-content"></div>
+                                    `;
+                                    reasoningEl.querySelector('.ai-reasoning-toggle').addEventListener('click', function () {
+                                        const content = this.nextElementSibling;
+                                        const chevron = this.querySelector('.ai-reasoning-chevron');
+                                        content.classList.toggle('show');
+                                        chevron.classList.toggle('expanded');
+                                    });
+                                    // 插入到第一条消息气泡之前
+                                    const firstBubble = assistantEl.querySelector('.ai-msg-bubble');
+                                    if (firstBubble) {
+                                        assistantEl.insertBefore(reasoningEl, firstBubble);
+                                    } else {
+                                        assistantEl.appendChild(reasoningEl);
+                                    }
+                                }
+                                const reasoningContent = reasoningEl.querySelector('.ai-reasoning-content');
+                                reasoningContent.textContent += eventData.content;
+                                scrollToBottom();
+                                break;
+                            }
 
                             case 'token':
                                 if (needNewBubble) {
@@ -869,6 +922,9 @@
                 currentBubble.innerHTML = '<span style="color:var(--text-secondary)">' + t('no_reply') + '</span>';
             }
 
+            // 完成进度卡片
+            completeProgressCard();
+
         } catch (e) {
             const activeBubble = assistantEl.querySelector('.ai-msg-bubble:last-of-type') || bubbleEl;
             if (e.name === 'AbortError') {
@@ -892,6 +948,7 @@
                 removeTypingIndicator(activeBubble);
                 activeBubble.innerHTML = `<span style="color:var(--danger-color)">${t('connection_error')}${escapeHtml(e.message)}</span>`;
             }
+            completeProgressCard();
         } finally {
             aiIsStreaming = false;
             aiAbortController = null;
@@ -930,6 +987,149 @@
             const stopBtn = wrapper.querySelector('.ai-stop-btn');
             if (stopBtn) stopBtn.style.display = 'none';
         }
+    }
+
+    // --- 进度卡片 ---
+    let aiProgressCard = null;
+    let aiProgressSteps = [];  // {id, message, status: 'running'|'done'|'error'}
+    let aiProgressStepIndex = 0;
+
+    function createProgressCard(parentEl) {
+        // 移除旧的进度卡片
+        if (aiProgressCard && aiProgressCard.parentNode) {
+            aiProgressCard.remove();
+        }
+        aiProgressSteps = [];
+        aiProgressStepIndex = 0;
+
+        const card = document.createElement('div');
+        card.className = 'ai-progress-card';
+        card.innerHTML = `
+            <div class="ai-progress-card-header">
+                <div class="ai-progress-card-title">
+                    <span class="ai-progress-card-icon">
+                        <span class="ai-tool-spinner"></span>
+                    </span>
+                    <span>${t('ai_progress_title')}</span>
+                </div>
+                <svg class="ai-progress-chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                </svg>
+            </div>
+            <div class="ai-progress-card-body">
+                <div class="ai-progress-steps"></div>
+            </div>
+        `;
+
+        card.querySelector('.ai-progress-card-header').addEventListener('click', function () {
+            const body = card.querySelector('.ai-progress-card-body');
+            body.classList.toggle('collapsed');
+            card.querySelector('.ai-progress-chevron').classList.toggle('expanded');
+        });
+
+        if (parentEl) {
+            parentEl.insertBefore(card, parentEl.firstChild);
+        } else {
+            aiMessages.appendChild(card);
+        }
+
+        aiProgressCard = card;
+        return card;
+    }
+
+    function addProgressStep(message, phase) {
+        if (!aiProgressCard) return;
+
+        // 更新上一个同 phase 的步骤为完成（如果有）
+        for (let i = aiProgressSteps.length - 1; i >= 0; i--) {
+            if (aiProgressSteps[i].status === 'running') {
+                aiProgressSteps[i].status = 'done';
+                const stepEl = aiProgressCard.querySelector(`.ai-progress-step[data-step-id="${aiProgressSteps[i].id}"]`);
+                if (stepEl) {
+                    const iconEl = stepEl.querySelector('.ai-progress-step-icon');
+                    if (iconEl) {
+                        iconEl.innerHTML = '<span class="ai-progress-check">&#10003;</span>';
+                    }
+                    stepEl.classList.add('done');
+                }
+                break;
+            }
+        }
+
+        const stepId = 'ps_' + (aiProgressStepIndex++);
+        aiProgressSteps.push({ id: stepId, message: message, status: 'running' });
+
+        const stepsEl = aiProgressCard.querySelector('.ai-progress-steps');
+        const stepEl = document.createElement('div');
+        stepEl.className = 'ai-progress-step running';
+        stepEl.dataset.stepId = stepId;
+        stepEl.innerHTML = `
+            <span class="ai-progress-step-icon">
+                <span class="ai-tool-spinner"></span>
+            </span>
+            <span class="ai-progress-step-text">${escapeHtml(message)}</span>
+        `;
+        stepsEl.appendChild(stepEl);
+
+        // 自动滚动步骤列表
+        stepsEl.scrollTop = stepsEl.scrollHeight;
+
+        // 更新标题栏状态
+        updateProgressCardTitle();
+    }
+
+    function updateProgressCardTitle() {
+        if (!aiProgressCard) return;
+        const runningSteps = aiProgressSteps.filter(s => s.status === 'running');
+        if (runningSteps.length > 0) {
+            const titleEl = aiProgressCard.querySelector('.ai-progress-card-title span:last-child');
+            if (titleEl) {
+                titleEl.textContent = runningSteps[runningSteps.length - 1].message;
+            }
+        }
+    }
+
+    function completeProgressCard() {
+        if (!aiProgressCard) return;
+
+        // 将所有运行中的步骤标记为完成
+        for (const step of aiProgressSteps) {
+            if (step.status === 'running') {
+                step.status = 'done';
+                const stepEl = aiProgressCard.querySelector(`.ai-progress-step[data-step-id="${step.id}"]`);
+                if (stepEl) {
+                    const iconEl = stepEl.querySelector('.ai-progress-step-icon');
+                    if (iconEl) {
+                        iconEl.innerHTML = '<span class="ai-progress-check">&#10003;</span>';
+                    }
+                    stepEl.classList.remove('running');
+                    stepEl.classList.add('done');
+                }
+            }
+        }
+
+        // 更新标题栏图标和状态
+        const titleIcon = aiProgressCard.querySelector('.ai-progress-card-icon');
+        if (titleIcon) {
+            titleIcon.innerHTML = '<span class="ai-progress-check">&#10003;</span>';
+        }
+        const titleText = aiProgressCard.querySelector('.ai-progress-card-title span:last-child');
+        if (titleText) {
+            titleText.textContent = t('ai_progress_done');
+        }
+        aiProgressCard.classList.add('completed');
+
+        // 1.5秒后自动折叠
+        setTimeout(() => {
+            if (aiProgressCard && aiProgressCard.parentNode) {
+                const body = aiProgressCard.querySelector('.ai-progress-card-body');
+                const chevron = aiProgressCard.querySelector('.ai-progress-chevron');
+                if (body && !body.classList.contains('collapsed')) {
+                    body.classList.add('collapsed');
+                    if (chevron) chevron.classList.remove('expanded');
+                }
+            }
+        }, 1500);
     }
 
     // --- DOM 操作 ---
@@ -1149,6 +1349,19 @@
         const mermaidBlocks = aiMessages.querySelectorAll('pre code.language-mermaid');
         if (mermaidBlocks.length === 0) return;
 
+        // 过滤掉已处理的块
+        const unprocessed = [];
+        for (const codeBlock of mermaidBlocks) {
+            const pre = codeBlock.parentElement;
+            if (pre.classList.contains('mermaid-processed')) continue;
+            pre.classList.add('mermaid-processed');
+            const mermaidCode = codeBlock.textContent.trim();
+            if (mermaidCode) {
+                unprocessed.push({ pre, mermaidCode });
+            }
+        }
+        if (unprocessed.length === 0) return;
+
         // 初始化 mermaid - 使用统一配置
         try {
             mermaid.initialize(
@@ -1164,31 +1377,52 @@
             );
         } catch (err) {
             console.error('Mermaid 初始化失败:', err);
+            // 恢复标记，允许下次重试
+            for (const { pre } of unprocessed) {
+                pre.classList.remove('mermaid-processed');
+            }
             return;
         }
 
-        for (const codeBlock of mermaidBlocks) {
-            const pre = codeBlock.parentElement;
-            if (pre.classList.contains('mermaid-processed')) continue;
-            pre.classList.add('mermaid-processed');
+        // 第一步：创建容器并替换所有 <pre> 元素
+        const renderTasks = [];
+        for (let i = 0; i < unprocessed.length; i++) {
+            const { pre, mermaidCode } = unprocessed[i];
 
-            const mermaidCode = codeBlock.textContent.trim();
-            if (!mermaidCode) continue;
+            const container = document.createElement('div');
+            container.className = 'ai-mermaid-container';
+            container.setAttribute('data-mermaid-source', mermaidCode);
+
+            const mermaidDiv = document.createElement('div');
+            mermaidDiv.className = 'mermaid';
+            container.appendChild(mermaidDiv);
+
+            // 在渲染前先替换 DOM 元素
+            pre.replaceWith(container);
+
+            renderTasks.push({ container, mermaidDiv, mermaidCode, index: i });
+        }
+
+        // 第二步：逐个渲染 Mermaid 图表
+        for (const task of renderTasks) {
+            const { container, mermaidDiv, mermaidCode, index } = task;
+            const id = `ai-mermaid-${Date.now()}-${index}`;
 
             try {
-                const container = document.createElement('div');
-                container.className = 'ai-mermaid-container';
-
-                const mermaidDiv = document.createElement('div');
-                mermaidDiv.className = 'mermaid';
-                mermaidDiv.textContent = mermaidCode;
-                container.appendChild(mermaidDiv);
-
-                pre.replaceWith(container);
-                await mermaid.run({ nodes: [mermaidDiv] });
-            } catch (e) {
-                console.error('Mermaid 渲染错误:', e);
-                pre.classList.remove('mermaid-processed');
+                const { svg } = await mermaid.render(id, mermaidCode);
+                mermaidDiv.innerHTML = svg;
+            } catch (err) {
+                console.error(`Mermaid 图表 ${index + 1} 渲染失败:`, err);
+                // 显示友好的错误提示，同时保留原始代码供用户查看
+                mermaidDiv.innerHTML =
+                    `<div style="padding:12px;background:#fff3f3;border:1px solid #f88;border-radius:6px;color:#c33;font-size:13px;max-width:100%;overflow:auto;">
+                        <strong>Mermaid 图表渲染失败</strong><br><br>
+                        <strong>错误信息：</strong>${escapeHtml(err.message || '未知错误')}<br><br>
+                        <details style="margin-top:8px;">
+                            <summary style="cursor:pointer;color:#666;">查看源代码</summary>
+                            <pre style="margin-top:8px;padding:8px;background:#fafafa;border:1px solid #ddd;border-radius:4px;font-size:12px;overflow:auto;">${escapeHtml(mermaidCode)}</pre>
+                        </details>
+                    </div>`;
             }
         }
     }

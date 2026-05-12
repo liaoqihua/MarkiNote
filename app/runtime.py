@@ -10,12 +10,14 @@ import logging
 import logging.handlers
 import os
 import shutil
+import signal
 import sys
 from pathlib import Path
 
 APP_NAME = "MarkiNote"
 LOG_DIR_NAME = "logs"
 LOG_FILE_NAME = "markinote.log"
+PID_FILE_NAME = "markinote.pid"
 
 
 class TeeStream:
@@ -145,6 +147,70 @@ def get_log_dir() -> Path:
     return project_root() / LOG_DIR_NAME
 
 
+# ---------------------------------------------------------------------------
+# PID 文件管理（用于后台运行模式）
+# ---------------------------------------------------------------------------
+
+def get_pid_file() -> Path:
+    """获取 PID 文件路径。"""
+    return get_data_dir() / PID_FILE_NAME
+
+
+def write_pid_file() -> None:
+    """写入当前进程 PID 到 PID 文件。"""
+    get_pid_file().write_text(str(os.getpid()))
+
+
+def read_pid_file() -> int | None:
+    """读取 PID 文件，返回 PID 或 None（文件不存在/无效）。"""
+    pid_file = get_pid_file()
+    if not pid_file.exists():
+        return None
+    try:
+        return int(pid_file.read_text().strip())
+    except (ValueError, OSError):
+        return None
+
+
+def remove_pid_file() -> None:
+    """删除 PID 文件。"""
+    pid_file = get_pid_file()
+    try:
+        pid_file.unlink(missing_ok=True)
+    except (FileNotFoundError, OSError):
+        pass
+
+
+def is_process_running(pid: int) -> bool:
+    """检查指定 PID 的进程是否在运行。
+
+    跨平台实现：
+    - Unix: os.kill(pid, 0) 发送空信号检测进程是否存在
+    - Windows: 通过 OpenProcess 检查进程句柄
+    """
+    if sys.platform.startswith("win"):
+        import ctypes
+        from ctypes import wintypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return False
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except (OSError, ProcessLookupError):
+            return False
+
+
+# ---------------------------------------------------------------------------
+# 数据目录初始化
+# ---------------------------------------------------------------------------
+
 def ensure_data_dirs() -> dict[str, Path]:
     """创建运行所需的可写目录，并在首次运行时初始化文档库。"""
     data_dir = get_data_dir()
@@ -176,11 +242,12 @@ def ensure_data_dirs() -> dict[str, Path]:
     }
 
 
-def setup_logging(debug: bool = False) -> Path:
+def setup_logging(debug: bool = False, background: bool = False) -> Path:
     """配置日志：控制台输出保留，同时写入日志文件（支持轮转）。
 
     Args:
         debug: True 时根日志级别为 DEBUG（开发模式），否则为 INFO（生产模式）。
+        background: True 时跳过控制台 handler 和 TeeStream（后台守护进程模式）。
     """
     global _stdout_log_handle, _stderr_log_handle
 
@@ -207,18 +274,19 @@ def setup_logging(debug: bool = False) -> Path:
         file_handler._markinote_file = True
         root_logger.addHandler(file_handler)
 
-    if not any(getattr(handler, "_markinote_console", False) for handler in root_logger.handlers):
-        console_handler = logging.StreamHandler(sys.__stdout__)
-        console_handler.setFormatter(formatter)
-        console_handler._markinote_console = True
-        root_logger.addHandler(console_handler)
+    if not background:
+        if not any(getattr(handler, "_markinote_console", False) for handler in root_logger.handlers):
+            console_handler = logging.StreamHandler(sys.__stdout__)
+            console_handler.setFormatter(formatter)
+            console_handler._markinote_console = True
+            root_logger.addHandler(console_handler)
 
-    # 捕获 print()/traceback 到同一个日志文件。注意这里用独立文件句柄，避免 logging 递归。
-    if not isinstance(sys.stdout, TeeStream):
-        _stdout_log_handle = open(log_file, "a", encoding="utf-8", buffering=1)
-        sys.stdout = TeeStream(sys.__stdout__, _stdout_log_handle)
-    if not isinstance(sys.stderr, TeeStream):
-        _stderr_log_handle = open(log_file, "a", encoding="utf-8", buffering=1)
-        sys.stderr = TeeStream(sys.__stderr__, _stderr_log_handle)
+        # 捕获 print()/traceback 到同一个日志文件。注意这里用独立文件句柄，避免 logging 递归。
+        if not isinstance(sys.stdout, TeeStream):
+            _stdout_log_handle = open(log_file, "a", encoding="utf-8", buffering=1)
+            sys.stdout = TeeStream(sys.__stdout__, _stdout_log_handle)
+        if not isinstance(sys.stderr, TeeStream):
+            _stderr_log_handle = open(log_file, "a", encoding="utf-8", buffering=1)
+            sys.stderr = TeeStream(sys.__stderr__, _stderr_log_handle)
 
     return log_file
