@@ -124,76 +124,79 @@ def _stop_background(pid: int | None) -> None:
 
 
 def _daemonize_unix() -> None:
-    """Unix/Linux: 使用 double-fork 技术将当前进程转为守护进程。
+    """Unix/Linux: 使用 subprocess 启动独立的后台进程。
 
-    执行后：
-    - 进程脱离终端
-    - 工作目录切换到 /
-    - stdio 重定向到 /dev/null 和日志文件
-    - PID 文件写入
+    不使用 fork——避免 PyInstaller onefile 下 _MEIPASS 继承问题。
+    子进程作为全新进程启动，拥有自己独立的 PyInstaller 运行时环境。
     """
-    # 第一次 fork：父进程退出
-    pid = os.fork()
-    if pid > 0:
-        # 等待子进程完成守护进程化并写入 PID 文件
-        pid_file = get_pid_file()
-        for _ in range(30):  # 最多等 3 秒
-            time.sleep(0.1)
-            actual_pid = read_pid_file()
-            if actual_pid is not None:
-                print(f"MarkiNote 已在后台启动 (PID: {actual_pid})")
-                sys.exit(0)
-        print("MarkiNote 后台启动失败，请检查日志文件。")
+    # 构建不含 'on' 的参数列表（子进程以交互模式运行）
+    other_args = [a for a in sys.argv[1:] if a != "on"]
+    if is_frozen():
+        # PyInstaller onefile: sys.executable 即为脚本本身
+        new_argv = [sys.executable] + other_args
+    else:
+        # 源码运行: 需要 Python 解释器 + 脚本路径
+        new_argv = [sys.executable, sys.argv[0]] + other_args
+
+    # 传递 MARKINOTE_BACKGROUND 环境变量，让子进程知道它运行在后台
+    env = os.environ.copy()
+    env["MARKINOTE_BACKGROUND"] = "1"
+
+    # 关键：清理 PyInstaller bootloader 泄漏的环境变量。
+    # 父 PyInstaller 进程启动时会设置这些变量指向自己的 _MEIPASS，
+    # 若子进程继承，会导致子进程加载父进程的临时文件/动态库，
+    # 当父进程退出并清理 _MEIPASS 时，子进程会崩溃。
+    for _key in (
+        "_MEIPASS2",              # 新 bootloader 会复用此目录，跳过解包
+        "_PYI_APPLICATION_HOME_DIR",
+        "_PYI_PARENT_PROCESS_LEVEL",
+        "LD_LIBRARY_PATH",        # 父进程的共享库路径
+        "DYLD_LIBRARY_PATH",
+        "DYLD_INSERT_LIBRARIES",
+    ):
+        env.pop(_key, None)
+    # 恢复 PyInstaller 保存的原始 LD_LIBRARY_PATH
+    _orig_ld = env.pop("LD_LIBRARY_PATH_ORIG", None)
+    if _orig_ld:
+        env["LD_LIBRARY_PATH"] = _orig_ld
+    _orig_dyld = env.pop("DYLD_LIBRARY_PATH_ORIG", None)
+    if _orig_dyld:
+        env["DYLD_LIBRARY_PATH"] = _orig_dyld
+
+    try:
+        subprocess.Popen(
+            new_argv,
+            env=env,
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        print(f"无法启动后台进程: {exc}")
         sys.exit(1)
 
-    # 创建新会话，脱离控制终端
-    os.setsid()
+    # 等待子进程写入 PID 文件
+    pid_file = get_pid_file()
+    for _ in range(30):  # 最多等 3 秒
+        time.sleep(0.1)
+        pid = read_pid_file()
+        if pid is not None:
+            print(f"MarkiNote 已在后台启动 (PID: {pid})")
+            return
 
-    # 第二次 fork：防止进程重新获取控制终端
-    pid = os.fork()
-    if pid > 0:
-        sys.exit(0)
-
-    # 现在是守护进程
-    os.chdir("/")
-    os.umask(0o022)
-
-    # 重定向标准文件描述符
-    log_file_path = get_log_dir() / "markinote.log"
-    sys.stdout.flush()
-    sys.stderr.flush()
-
-    # 关闭所有已打开的文件描述符（保留 0/1/2 用于重定向）
-    try:
-        max_fd = os.sysconf("SC_OPEN_MAX")
-    except (ValueError, OSError):
-        max_fd = 1024
-    for fd in range(3, max_fd):
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-
-    # 重定向 stdio
-    with open(os.devnull, "r") as devnull_in, open(log_file_path, "a+") as log_out:
-        os.dup2(devnull_in.fileno(), 0)
-        os.dup2(log_out.fileno(), 1)
-        os.dup2(log_out.fileno(), 2)
-
-    # 写入 PID 文件
-    write_pid_file()
-
-    # 标记为后台模式，子进程后续流程读取此变量
-    os.environ["MARKINOTE_BACKGROUND"] = "1"
+    print("MarkiNote 后台启动失败，请检查日志文件。")
+    sys.exit(1)
 
 
 def _start_background_windows(original_argv: list[str]) -> None:
     """Windows: 使用 subprocess 启动分离的后台进程。"""
     # 构建不含 'on' 的参数列表
-    new_argv = [a for a in original_argv if a != "on"]
-    if not new_argv:
-        new_argv = [sys.executable]
-    new_argv[0] = sys.executable
+    other_args = [a for a in sys.argv[1:] if a != "on"]
+    if is_frozen():
+        new_argv = [sys.executable] + other_args
+    else:
+        new_argv = [sys.executable, sys.argv[0]] + other_args
 
     # 传递 MARKINOTE_BACKGROUND 环境变量，让子进程知道它运行在后台
     env = os.environ.copy()
@@ -262,8 +265,8 @@ def handle_background_mode(args: argparse.Namespace, original_argv: list[str]) -
         return False
     else:
         _daemonize_unix()
-        # 守护进程子进程继续执行 run()
-        return True
+        # 子进程已通过 subprocess 独立启动，父进程退出
+        return False
 
 
 def run(argv: list[str] | None = None) -> None:
@@ -274,10 +277,10 @@ def run(argv: list[str] | None = None) -> None:
     if not handle_background_mode(args, sys.argv):
         sys.exit(0)
 
-    # 判断是否为后台守护模式（Unix fork 后子进程已设置此变量）
+    # 判断是否为后台模式（通过 MARKINOTE_BACKGROUND 环境变量识别）
     is_background = os.environ.get("MARKINOTE_BACKGROUND") == "1"
 
-    # 后台模式下写入 PID 文件（Unix 守护进程已在 _daemonize_unix 中写入，此处为 Windows 子进程写入）
+    # 后台模式下写入 PID 文件（子进程启动后写入）
     if is_background:
         write_pid_file()
 
