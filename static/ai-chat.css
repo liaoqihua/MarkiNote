@@ -558,6 +558,7 @@
 
 /* AI 消息内 Mermaid 图表容器 */
 .ai-mermaid-container {
+    position: relative;
     margin: 10px 0;
     padding: 12px;
     background: var(--sidebar-bg);
@@ -576,6 +577,40 @@
 .ai-mermaid-container svg {
     max-width: 100%;
     height: auto;
+}
+
+/* AI 消息内 Mermaid 图表工具栏（右上角） */
+.ai-mermaid-actions {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 2;
+}
+
+.ai-mermaid-container:hover .ai-mermaid-actions {
+    opacity: 1;
+}
+
+.ai-mermaid-btn {
+    background: var(--primary-color);
+    color: #fff;
+    border: none;
+    padding: 5px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    line-height: 1;
+}
+
+.ai-mermaid-btn:hover {
+    background: var(--primary-hover);
 }
 
 /* 用户消息中的特殊元素适配 */

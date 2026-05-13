@@ -2705,6 +2705,13 @@ async function renderMermaidDiagrams() {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'mermaid-actions';
         
+        // 放大查看按钮
+        const zoomBtn = document.createElement('button');
+        zoomBtn.className = 'mermaid-btn';
+        zoomBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11zM13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0z"/><path d="M10.344 11.742c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1 6.538 6.538 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M6.5 3a.5.5 0 0 1 .5.5V6h2.5a.5.5 0 0 1 0 1H7v2.5a.5.5 0 0 1-1 0V7H3.5a.5.5 0 0 1 0-1H6V3.5a.5.5 0 0 1 .5-.5z"/></svg>';
+        zoomBtn.title = '放大查看';
+        zoomBtn.addEventListener('click', () => openMermaidZoomModal(container));
+        
         // 复制源代码按钮
         const copyBtn = document.createElement('button');
         copyBtn.className = 'mermaid-btn';
@@ -2731,6 +2738,7 @@ async function renderMermaidDiagrams() {
         exportBtn.title = '导出为JPG';
         exportBtn.addEventListener('click', () => exportMermaidAsImage(container, i));
         
+        actionsDiv.appendChild(zoomBtn);
         actionsDiv.appendChild(copyBtn);
         actionsDiv.appendChild(exportBtn);
         
@@ -2797,6 +2805,205 @@ async function renderMermaidDiagrams() {
         console.error('❌ Mermaid渲染过程出错:', err);
     }
 }
+
+// 以可缩放/平移的模态框放大查看 Mermaid 图表
+// 入参可以是预览区的 .mermaid-container 或 AI 聊天区的 .ai-mermaid-container
+function openMermaidZoomModal(container) {
+    if (!container) return;
+    const svg = container.querySelector('svg');
+    if (!svg) {
+        alert('图表尚未渲染完成，请稍候再试');
+        return;
+    }
+
+    // 若已存在则先关闭，避免叠加
+    const existing = document.querySelector('.mermaid-zoom-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.className = 'mermaid-zoom-modal';
+    modal.innerHTML = `
+        <div class="mermaid-zoom-content" role="dialog" aria-label="Mermaid 图表放大查看">
+            <div class="mermaid-zoom-toolbar">
+                <span class="mermaid-zoom-title">Mermaid 图表查看</span>
+                <div class="mermaid-zoom-actions">
+                    <button class="mermaid-zoom-btn" data-act="zoom-out" title="缩小 (-)">−</button>
+                    <span class="mermaid-zoom-scale">100%</span>
+                    <button class="mermaid-zoom-btn" data-act="zoom-in" title="放大 (+)">+</button>
+                    <button class="mermaid-zoom-btn" data-act="fit" title="适应窗口 (0)">适应</button>
+                    <button class="mermaid-zoom-btn" data-act="reset" title="实际大小 (1)">1:1</button>
+                    <button class="mermaid-zoom-btn mermaid-zoom-close" data-act="close" title="关闭 (Esc)">✕</button>
+                </div>
+            </div>
+            <div class="mermaid-zoom-viewport">
+                <div class="mermaid-zoom-stage"></div>
+            </div>
+            <div class="mermaid-zoom-hint">滚轮缩放 · 拖动平移 · 双击适应 · Esc 关闭</div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const viewport = modal.querySelector('.mermaid-zoom-viewport');
+    const stage = modal.querySelector('.mermaid-zoom-stage');
+    const scaleLabel = modal.querySelector('.mermaid-zoom-scale');
+
+    // 先从原 SVG 读取逻辑尺寸（viewBox 优先；退回到渲染后的实际盒模型）
+    let baseW = 0, baseH = 0;
+    if (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width) {
+        baseW = svg.viewBox.baseVal.width;
+        baseH = svg.viewBox.baseVal.height;
+    }
+    if (!baseW || !baseH) {
+        const b = svg.getBoundingClientRect();
+        baseW = b.width || 600;
+        baseH = b.height || 400;
+    }
+
+    // 克隆 SVG 并设置显式尺寸（Mermaid 默认不带 width/height 属性，
+    // 放进绝对定位、无尺寸的 stage 中会渲染为 0 导致空白）
+    const clonedSvg = svg.cloneNode(true);
+    clonedSvg.style.maxWidth = 'none';
+    clonedSvg.style.maxHeight = 'none';
+    clonedSvg.style.width = baseW + 'px';
+    clonedSvg.style.height = baseH + 'px';
+    clonedSvg.setAttribute('width', baseW);
+    clonedSvg.setAttribute('height', baseH);
+    stage.appendChild(clonedSvg);
+
+    // stage 与 SVG 保持一致尺寸，便于 transform 计算
+    stage.style.width = baseW + 'px';
+    stage.style.height = baseH + 'px';
+
+    function getSvgSize() {
+        return { w: baseW, h: baseH };
+    }
+
+    const MIN_SCALE = 0.1;
+    const MAX_SCALE = 10;
+    let scale = 1, tx = 0, ty = 0;
+
+    function applyTransform() {
+        stage.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+        scaleLabel.textContent = Math.round(scale * 100) + '%';
+    }
+
+    function fitToViewport() {
+        const rect = viewport.getBoundingClientRect();
+        const { w, h } = getSvgSize();
+        const padding = 40;
+        const sx = (rect.width - padding) / w;
+        const sy = (rect.height - padding) / h;
+        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.min(sx, sy)));
+        tx = (rect.width - w * scale) / 2;
+        ty = (rect.height - h * scale) / 2;
+        applyTransform();
+    }
+
+    function resetTo100() {
+        const rect = viewport.getBoundingClientRect();
+        const { w, h } = getSvgSize();
+        scale = 1;
+        tx = (rect.width - w) / 2;
+        ty = (rect.height - h) / 2;
+        applyTransform();
+    }
+
+    function zoomAtPoint(cx, cy, factor) {
+        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
+        if (newScale === scale) return;
+        const ratio = newScale / scale;
+        tx = cx - (cx - tx) * ratio;
+        ty = cy - (cy - ty) * ratio;
+        scale = newScale;
+        applyTransform();
+    }
+
+    // 初始化（下一帧以便拿到容器尺寸）
+    requestAnimationFrame(fitToViewport);
+
+    // 滚轮缩放（以鼠标为中心）
+    function onWheel(e) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        zoomAtPoint(e.clientX - rect.left, e.clientY - rect.top, factor);
+    }
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+
+    // 拖拽平移
+    let dragging = false, dragSX = 0, dragSY = 0, origTx = 0, origTy = 0;
+    function onMouseDown(e) {
+        if (e.button !== 0) return;
+        dragging = true;
+        dragSX = e.clientX; dragSY = e.clientY;
+        origTx = tx; origTy = ty;
+        viewport.classList.add('dragging');
+        e.preventDefault();
+    }
+    function onMouseMove(e) {
+        if (!dragging) return;
+        tx = origTx + (e.clientX - dragSX);
+        ty = origTy + (e.clientY - dragSY);
+        applyTransform();
+    }
+    function onMouseUp() {
+        if (!dragging) return;
+        dragging = false;
+        viewport.classList.remove('dragging');
+    }
+    viewport.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    // 双击适应
+    viewport.addEventListener('dblclick', fitToViewport);
+
+    // 工具栏按钮
+    modal.querySelectorAll('.mermaid-zoom-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const act = btn.getAttribute('data-act');
+            const rect = viewport.getBoundingClientRect();
+            const cx = rect.width / 2, cy = rect.height / 2;
+            if (act === 'zoom-in') zoomAtPoint(cx, cy, 1.2);
+            else if (act === 'zoom-out') zoomAtPoint(cx, cy, 1 / 1.2);
+            else if (act === 'fit') fitToViewport();
+            else if (act === 'reset') resetTo100();
+            else if (act === 'close') close();
+        });
+    });
+
+    // 点击遮罩关闭
+    modal.addEventListener('mousedown', (e) => {
+        if (e.target === modal) close();
+    });
+
+    // 键盘快捷键
+    function onKeydown(e) {
+        if (e.key === 'Escape') { close(); return; }
+        if (e.key === '+' || e.key === '=') {
+            const rect = viewport.getBoundingClientRect();
+            zoomAtPoint(rect.width / 2, rect.height / 2, 1.2);
+        } else if (e.key === '-') {
+            const rect = viewport.getBoundingClientRect();
+            zoomAtPoint(rect.width / 2, rect.height / 2, 1 / 1.2);
+        } else if (e.key === '0') {
+            fitToViewport();
+        } else if (e.key === '1') {
+            resetTo100();
+        }
+    }
+    document.addEventListener('keydown', onKeydown);
+
+    function close() {
+        document.removeEventListener('keydown', onKeydown);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        modal.remove();
+    }
+}
+
+// 暴露给 ai-chat.js 等模块复用
+window.openMermaidZoomModal = openMermaidZoomModal;
 
 // 导出Mermaid图表为图片
 async function exportMermaidAsImage(container, index) {
