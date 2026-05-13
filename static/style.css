@@ -431,6 +431,22 @@ body.dark-mode .file-item.search-match {
     content: '';
 }
 
+/* 面包屑作为拖拽放置目标 */
+.breadcrumb-item.drag-over {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--primary-color);
+    outline: 2px dashed var(--primary-color);
+    outline-offset: -2px;
+}
+
+.breadcrumb-item.drag-over-invalid {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger-color);
+    outline: 2px dashed var(--danger-color);
+    outline-offset: -2px;
+    cursor: no-drop;
+}
+
 /* ===== 文件列表 ===== */
 .file-list {
     flex: 1;

@@ -351,13 +351,13 @@ function displayFiles(items) {
 // 更新面包屑导航
 function updateBreadcrumb(path) {
     const parts = path ? path.split('/').filter(p => p) : [];
-    let html = '<span class="breadcrumb-item" onclick="loadLibrary(\'\')">' + t('root_dir') + '</span>';
+    let html = `<span class="breadcrumb-item" data-path="" onclick="loadLibrary('')">${t('root_dir')}</span>`;
     
     let accumulated = '';
     parts.forEach((part, index) => {
         accumulated += (accumulated ? '/' : '') + part;
         const isLast = index === parts.length - 1;
-        html += `<span class="breadcrumb-item ${isLast ? 'active' : ''}" 
+        html += `<span class="breadcrumb-item ${isLast ? 'active' : ''}" data-path="${accumulated}"
                       onclick="loadLibrary('${accumulated}')">${part}</span>`;
     });
     
@@ -2932,6 +2932,30 @@ function _findItemAtPoint(x, y) {
     return null;
 }
 
+// 定位坐标下的放置目标（优先面包屑，其次文件列表中的 folder）
+function _findDropTarget(x, y) {
+    // 优先检测面包屑
+    if (breadcrumb) {
+        const crumbs = breadcrumb.querySelectorAll('.breadcrumb-item');
+        for (const it of crumbs) {
+            const r = it.getBoundingClientRect();
+            if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+                return { el: it, path: it.dataset.path || '', kind: 'breadcrumb' };
+            }
+        }
+    }
+    // 文件列表项
+    const itemEl = _findItemAtPoint(x, y);
+    if (itemEl) {
+        return {
+            el: itemEl,
+            path: itemEl.dataset.path,
+            kind: itemEl.dataset.type === 'folder' ? 'folder' : 'file'
+        };
+    }
+    return null;
+}
+
 // 创建自定义拖拽幽灵
 function _createDragGhost(names, count, pos) {
     _removeDragGhost();
@@ -2965,6 +2989,10 @@ function _cleanupDragVisual() {
         fileList.querySelectorAll('.file-item.drag-over').forEach(el => el.classList.remove('drag-over'));
         fileList.querySelectorAll('.file-item.drag-over-invalid').forEach(el => el.classList.remove('drag-over-invalid'));
     }
+    if (breadcrumb) {
+        breadcrumb.querySelectorAll('.breadcrumb-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+        breadcrumb.querySelectorAll('.breadcrumb-item.drag-over-invalid').forEach(el => el.classList.remove('drag-over-invalid'));
+    }
     _currentDragOverEl = null;
     _removeDragGhost();
 }
@@ -2989,49 +3017,63 @@ function _startCustomDrag(e) {
 }
 
 // 更新拖拽过程中的目标项视觉反馈
-function _updateDragOver(itemEl) {
+function _updateDragOver(target) {
+    const el = target ? target.el : null;
     // 清除上一次的高亮
-    if (_currentDragOverEl && _currentDragOverEl !== itemEl) {
+    if (_currentDragOverEl && _currentDragOverEl !== el) {
         _currentDragOverEl.classList.remove('drag-over');
         _currentDragOverEl.classList.remove('drag-over-invalid');
     }
-    _currentDragOverEl = itemEl;
-    if (!itemEl) return;
+    _currentDragOverEl = el;
+    if (!target) return;
 
-    const type = itemEl.dataset.type;
-    const path = itemEl.dataset.path;
+    const path = target.path;
+    const isFolderTarget = target.kind === 'folder' || target.kind === 'breadcrumb';
 
-    if (type === 'folder') {
+    if (isFolderTarget) {
         // 勾选项中任一等于目标或是目标祖先 → 非法
         const sources = Array.from(selectedExportFiles.size > 0 ? selectedExportFiles : [_downPath]);
-        const invalid = sources.some(s => s === path || path.startsWith(s + '/'));
+        const invalid = sources.some(s => {
+            if (!s) return true;
+            if (s === path) return true;
+            if (path === '') return false;              // 根目录总是允许
+            if (path.startsWith(s + '/')) return true;  // 不能移到自己子目录
+            return false;
+        });
         if (invalid) {
-            itemEl.classList.add('drag-over-invalid');
-            itemEl.classList.remove('drag-over');
+            el.classList.add('drag-over-invalid');
+            el.classList.remove('drag-over');
         } else {
-            itemEl.classList.add('drag-over');
-            itemEl.classList.remove('drag-over-invalid');
+            el.classList.add('drag-over');
+            el.classList.remove('drag-over-invalid');
         }
     } else {
-        itemEl.classList.add('drag-over-invalid');
-        itemEl.classList.remove('drag-over');
+        el.classList.add('drag-over-invalid');
+        el.classList.remove('drag-over');
     }
 }
 
 // 完成自定义拖拽（放置）
 async function _finishCustomDrop(e) {
-    const itemEl = _findItemAtPoint(e.clientX, e.clientY);
+    const target = _findDropTarget(e.clientX, e.clientY);
     _cleanupDragVisual();
 
-    if (!itemEl) return;
+    if (!target) return;
 
-    const targetPath = itemEl.dataset.path;
-    const targetType = itemEl.dataset.type;
-    const targetName = itemEl.dataset.itemName || targetPath.split('/').pop();
+    const targetPath = target.path;
+    const isFolderTarget = target.kind === 'folder' || target.kind === 'breadcrumb';
 
-    if (targetType !== 'folder') {
+    if (!isFolderTarget) {
         showError(t('invalid_drop_target'));
         return;
+    }
+
+    // 目标显示名
+    let targetName;
+    if (target.kind === 'breadcrumb') {
+        targetName = targetPath === '' ? t('root_dir') : targetPath.split('/').pop();
+    } else {
+        targetName = target.el.dataset.itemName || targetPath.split('/').pop();
     }
 
     // 收集源路径
@@ -3040,7 +3082,9 @@ async function _finishCustomDrop(e) {
 
     // 过滤非法目标
     const validPaths = sources.filter(p => {
+        if (!p) return false;
         if (p === targetPath) return false;
+        if (targetPath === '') return true; // 根目录总是允许
         if (targetPath.startsWith(p + '/')) return false;
         return true;
     });
@@ -3155,9 +3199,9 @@ function onFileListMouseMove(e) {
             _customDragGhost.style.left = (e.clientX + 15) + 'px';
             _customDragGhost.style.top = (e.clientY + 15) + 'px';
         }
-        // 更新 hover 目标
-        const itemEl = _findItemAtPoint(e.clientX, e.clientY);
-        _updateDragOver(itemEl);
+        // 更新 hover 目标（面包屑 + 文件夹）
+        const target = _findDropTarget(e.clientX, e.clientY);
+        _updateDragOver(target);
     }
 }
 
