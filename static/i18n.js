@@ -103,6 +103,8 @@
             load_folder_fail: '加载文件夹列表失败',
             toc: '目录', toc_empty: '暂无目录', toc_close: '关闭目录', toc_toggle: '切换目录',
             select_all: '全选当前目录文件', deselect_all: '取消全选',
+            tooltip_item_unselected: '操作提示：\n1. 单击+勾选框=切换勾选状态\n2. 双击+文档=打开文档\n3. 单击+按住+移动=多选',
+            tooltip_item_selected: '操作提示：\n1. 双击+按住+移动=拖动文档\n2. 单击+按住+移动=取消多选',
         },
         'en': {
             loading: 'Loading...', cancel: 'Cancel', confirm: 'OK', delete_word: 'Delete', rename: 'Rename',
@@ -204,6 +206,8 @@
             load_folder_fail: 'Failed to load folder list',
             toc: 'Contents', toc_empty: 'No contents', toc_close: 'Close contents', toc_toggle: 'Toggle contents',
             select_all: 'Select all files in current folder', deselect_all: 'Deselect all',
+            tooltip_item_unselected: 'Tips:\n1. Click + checkbox = toggle selection\n2. Double-click + item = open document\n3. Click + hold + move = multi-select',
+            tooltip_item_selected: 'Tips:\n1. Double-click + hold + move = drag document\n2. Click + hold + move = unselect multiple',
         },
         'fr': {
             loading: 'Chargement...', cancel: 'Annuler', confirm: 'OK', delete_word: 'Supprimer', rename: 'Renommer',
@@ -300,6 +304,8 @@
             load_folder_fail: 'Échec du chargement des dossiers',
             toc: 'Sommaire', toc_empty: 'Aucun sommaire', toc_close: 'Fermer le sommaire', toc_toggle: 'Afficher/masquer le sommaire',
             select_all: 'Tout sélectionner', deselect_all: 'Tout désélectionner',
+            tooltip_item_unselected: 'Astuces :\n1. Clic + case à cocher = basculer la sélection\n2. Double-clic + document = ouvrir le document\n3. Clic + maintenir + déplacer = sélection multiple',
+            tooltip_item_selected: 'Astuces :\n1. Double-clic + maintenir + déplacer = glisser le document\n2. Clic + maintenir + déplacer = désélection multiple',
         },
         'ja': {
             loading: '読み込み中...', cancel: 'キャンセル', confirm: 'OK', delete_word: '削除', rename: '名前変更',
@@ -396,6 +402,8 @@
             load_folder_fail: 'フォルダ一覧の読み込み失敗',
             toc: '目次', toc_empty: '目次なし', toc_close: '目次を閉じる', toc_toggle: '目次の表示切替',
             select_all: 'すべて選択', deselect_all: '選択解除',
+            tooltip_item_unselected: '操作ヒント：\n1. クリック+チェックボックス=選択切替\n2. ダブルクリック+ドキュメント=ドキュメントを開く\n3. クリック+長押し+移動=複数選択',
+            tooltip_item_selected: '操作ヒント：\n1. ダブルクリック+長押し+移動=ドキュメントをドラッグ\n2. クリック+長押し+移動=複数選択解除',
         }
     };
 

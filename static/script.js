@@ -201,17 +201,15 @@ function setupEventListeners() {
 
     // ===== 拖拽与多选：在文件列表上使用事件委托 =====
     if (fileList) {
-        // 鼠标滑动多选
+        // 统一鼠标状态机（滑动多选 + 自定义拖拽）
         fileList.addEventListener('mousedown', onFileListMouseDown);
         document.addEventListener('mousemove', onFileListMouseMove);
         document.addEventListener('mouseup', onFileListMouseUp);
 
-        // 拖拽事件委托
-        fileList.addEventListener('dragstart', onFileItemDragStart);
-        fileList.addEventListener('dragover', onFileItemDragOver);
-        fileList.addEventListener('dragleave', onFileItemDragLeave);
-        fileList.addEventListener('drop', onFileItemDrop);
-        fileList.addEventListener('dragend', onFileItemDragEnd);
+        // 悬浮操作提示 tooltip
+        fileList.addEventListener('mouseover', onFileListMouseOver);
+        fileList.addEventListener('mousemove', onFileListMouseMoveTooltip);
+        fileList.addEventListener('mouseout', onFileListMouseOut);
     }
 }
 
@@ -316,21 +314,8 @@ function displayFiles(items) {
         div.dataset.path = item.path;
         div.dataset.type = item.type;
         div.dataset.itemName = item.name;
-        div.draggable = true;
-        // 单击：切换勾选
-        div.onclick = (e) => {
-            // 如果点击的是复选框label本身，由checkbox的onchange处理
-            if (e.target.closest('.file-select')) return;
-            // 触发复选框切换
-            const checkbox = div.querySelector('.file-select input[type="checkbox"]');
-            if (checkbox) checkbox.click();
-        };
-        // 双击：打开/进入
-        div.ondblclick = (e) => {
-            // 双击复选框区域不打开
-            if (e.target.closest('.file-select')) return;
-            handleFileClick(item.path, item.type);
-        };
+        // 不使用 HTML5 原生拖拽，改由统一鼠标状态机处理（见 onFileListMouseDown/Move/Up）
+        div.draggable = false;
         div.oncontextmenu = (e) => showContextMenu(e, item.path, item.type);
         
         const isSelected = selectedExportFiles.has(item.path);
@@ -2898,18 +2883,24 @@ async function checkForUpdates() {
     }
 }
 
-// ===== 拖拽功能 =====
+// ===== 目录栏交互状态机（滑动多选 + 自定义拖拽） =====
 
-// 拖拽状态
-let _dragSourcePath = null;
+// 状态机模式：'idle' | 'swipe' | 'drag'
+let _mouseMode = 'idle';
+let _downX = 0;
+let _downY = 0;
+let _downPath = null;
+let _downType = null;
+let _downWasSelected = false;  // 按下时该项是否已勾选
+let _pendingDrag = false;      // 是否为"双击按住"潜在拖拽
+let _swipeToggled = new Set();
+let _lastClickTime = 0;
+let _lastClickPath = null;
 let _customDragGhost = null;
-let _dragWasCanceled = false;
+let _currentDragOverEl = null;
 
-// 鼠标滑动多选状态
-let _multiSelectStartY = 0;
-let _multiSelectActive = false;
-let _multiSelectStartOnItem = false; // mousedown 是否在文件项上
-let _multiSelectToggled = new Set(); // 本次拖拽已处理的路径
+const MOUSE_MOVE_THRESHOLD = 5;
+const DOUBLE_CLICK_INTERVAL = 400;
 
 // 获取文件项元素（通过事件目标向上查找）
 function _getFileItemEl(target) {
@@ -2928,56 +2919,27 @@ function _escapeSelector(str) {
     return str.replace(/([^\w-])/g, '\\$1');
 }
 
-// 拖拽开始
-function onFileItemDragStart(e) {
-    const itemEl = _getFileItemEl(e.target);
-    if (!itemEl) return;
-
-    const path = itemEl.dataset.path;
-
-    // 必须勾选才能拖拽
-    if (!selectedExportFiles.has(path)) {
-        e.preventDefault();
-        _dragWasCanceled = true;  // 标记拖拽被取消，交由多选逻辑
-        return;
+// 通过 bounding rect 定位坐标下的文件项（与 CSS hover 区域一致）
+function _findItemAtPoint(x, y) {
+    if (!fileList) return null;
+    const items = fileList.querySelectorAll('.file-item');
+    for (const item of items) {
+        const r = item.getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+            return item;
+        }
     }
-
-    _dragWasCanceled = false;
-    // 拖拽已启动，重置多选状态防止冲突
-    _multiSelectStartY = 0;
-    _multiSelectStartOnItem = false;
-    _multiSelectToggled.clear();
-
-    const name = itemEl.dataset.itemName || path.split('/').pop();
-
-    // 收集所有勾选项一起拖拽
-    const pathsToMove = Array.from(selectedExportFiles);
-    const namesToMove = pathsToMove.map(p => p.split('/').pop());
-
-    _dragSourcePath = path;
-
-    // 设置拖拽数据
-    e.dataTransfer.setData('text/plain', JSON.stringify({ paths: pathsToMove }));
-    e.dataTransfer.effectAllowed = 'move';
-
-    // 标记所有勾选项
-    pathsToMove.forEach(p => {
-        const el = fileList.querySelector(`.file-item[data-path="${_escapeSelector(p)}"]`);
-        if (el) el.classList.add('dragging');
-    });
-
-    // 创建自定义幽灵元素
-    _createDragGhost(namesToMove, pathsToMove.length, e);
+    return null;
 }
 
-// 创建拖拽幽灵
-function _createDragGhost(names, count, e) {
+// 创建自定义拖拽幽灵
+function _createDragGhost(names, count, pos) {
     _removeDragGhost();
 
     const ghost = document.createElement('div');
     ghost.className = 'drag-ghost';
-    ghost.style.left = '-9999px';
-    ghost.style.top = '-9999px';
+    ghost.style.left = (pos.clientX + 15) + 'px';
+    ghost.style.top = (pos.clientY + 15) + 'px';
 
     if (count > 1) {
         ghost.innerHTML = `<span class="ghost-count">${count}</span><span>${names[0]} ...</span>`;
@@ -2987,27 +2949,7 @@ function _createDragGhost(names, count, e) {
 
     document.body.appendChild(ghost);
     _customDragGhost = ghost;
-
-    // 先用透明图片抑制浏览器默认拖拽幽灵，再用自定义元素
-    const emptyImg = new Image();
-    emptyImg.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    e.dataTransfer.setDragImage(emptyImg, 0, 0);
-
-    requestAnimationFrame(() => {
-        if (_customDragGhost) {
-            _customDragGhost.style.left = (e.clientX + 15) + 'px';
-            _customDragGhost.style.top = (e.clientY + 15) + 'px';
-        }
-    });
 }
-
-// 全局拖拽跟踪（更新自定义幽灵位置）
-document.addEventListener('dragover', (e) => {
-    if (_customDragGhost) {
-        _customDragGhost.style.left = (e.clientX + 15) + 'px';
-        _customDragGhost.style.top = (e.clientY + 15) + 'px';
-    }
-}, { passive: true });
 
 function _removeDragGhost() {
     if (_customDragGhost) {
@@ -3016,54 +2958,72 @@ function _removeDragGhost() {
     }
 }
 
-// 拖拽经过
-function onFileItemDragOver(e) {
-    e.preventDefault();
+// 清理所有拖拽相关视觉状态
+function _cleanupDragVisual() {
+    if (fileList) {
+        fileList.querySelectorAll('.file-item.dragging').forEach(el => el.classList.remove('dragging'));
+        fileList.querySelectorAll('.file-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+        fileList.querySelectorAll('.file-item.drag-over-invalid').forEach(el => el.classList.remove('drag-over-invalid'));
+    }
+    _currentDragOverEl = null;
+    _removeDragGhost();
+}
 
-    const itemEl = _getFileItemEl(e.target);
+// 启动自定义拖拽
+function _startCustomDrag(e) {
+    // 收集所有勾选项（至少含按下的项）
+    let paths = Array.from(selectedExportFiles);
+    if (paths.length === 0 && _downPath) {
+        paths = [_downPath];
+    }
+    const names = paths.map(p => p.split('/').pop());
+
+    // 标记拖拽中
+    paths.forEach(p => {
+        const el = fileList.querySelector(`.file-item[data-path="${_escapeSelector(p)}"]`);
+        if (el) el.classList.add('dragging');
+    });
+
+    _createDragGhost(names, paths.length, { clientX: e.clientX, clientY: e.clientY });
+    _mouseMode = 'drag';
+}
+
+// 更新拖拽过程中的目标项视觉反馈
+function _updateDragOver(itemEl) {
+    // 清除上一次的高亮
+    if (_currentDragOverEl && _currentDragOverEl !== itemEl) {
+        _currentDragOverEl.classList.remove('drag-over');
+        _currentDragOverEl.classList.remove('drag-over-invalid');
+    }
+    _currentDragOverEl = itemEl;
     if (!itemEl) return;
 
     const type = itemEl.dataset.type;
     const path = itemEl.dataset.path;
 
     if (type === 'folder') {
-        // 检查：勾选项中任一不能是目标自身或子目录
-        const sources = Array.from(selectedExportFiles);
+        // 勾选项中任一等于目标或是目标祖先 → 非法
+        const sources = Array.from(selectedExportFiles.size > 0 ? selectedExportFiles : [_downPath]);
         const invalid = sources.some(s => s === path || path.startsWith(s + '/'));
         if (invalid) {
-            e.dataTransfer.dropEffect = 'none';
             itemEl.classList.add('drag-over-invalid');
             itemEl.classList.remove('drag-over');
-            return;
+        } else {
+            itemEl.classList.add('drag-over');
+            itemEl.classList.remove('drag-over-invalid');
         }
-        e.dataTransfer.dropEffect = 'move';
-        itemEl.classList.add('drag-over');
-        itemEl.classList.remove('drag-over-invalid');
     } else {
-        e.dataTransfer.dropEffect = 'none';
         itemEl.classList.add('drag-over-invalid');
         itemEl.classList.remove('drag-over');
     }
 }
 
-// 拖拽离开
-function onFileItemDragLeave(e) {
-    const itemEl = _getFileItemEl(e.target);
+// 完成自定义拖拽（放置）
+async function _finishCustomDrop(e) {
+    const itemEl = _findItemAtPoint(e.clientX, e.clientY);
+    _cleanupDragVisual();
+
     if (!itemEl) return;
-
-    itemEl.classList.remove('drag-over');
-    itemEl.classList.remove('drag-over-invalid');
-}
-
-// 放置
-async function onFileItemDrop(e) {
-    e.preventDefault();
-
-    const itemEl = _getFileItemEl(e.target);
-    if (!itemEl) return;
-
-    itemEl.classList.remove('drag-over');
-    itemEl.classList.remove('drag-over-invalid');
 
     const targetPath = itemEl.dataset.path;
     const targetType = itemEl.dataset.type;
@@ -3074,19 +3034,19 @@ async function onFileItemDrop(e) {
         return;
     }
 
-    // 收集所有勾选项
-    const sources = Array.from(selectedExportFiles);
+    // 收集源路径
+    let sources = Array.from(selectedExportFiles);
+    if (sources.length === 0 && _downPath) sources = [_downPath];
 
-    // 过滤无效目标
+    // 过滤非法目标
     const validPaths = sources.filter(p => {
         if (p === targetPath) return false;
         if (targetPath.startsWith(p + '/')) return false;
         return true;
     });
-
     if (validPaths.length === 0) return;
 
-    // 确认移动
+    // 确认
     if (validPaths.length === 1) {
         const itemName = validPaths[0].split('/').pop();
         if (!confirm(t('move_confirm', { item: itemName, target: targetName }))) return;
@@ -3094,24 +3054,10 @@ async function onFileItemDrop(e) {
         if (!confirm(t('batch_move_confirm', { count: validPaths.length, target: targetName }))) return;
     }
 
-    // 执行移动
     await moveItems(validPaths, targetPath);
-
-    // 移动成功后清除勾选
     _clearAllSelections();
 }
 
-// 拖拽结束
-function onFileItemDragEnd(e) {
-    _removeDragGhost();
-    _dragSourcePath = null;
-
-    if (fileList) {
-        fileList.querySelectorAll('.file-item.dragging').forEach(el => el.classList.remove('dragging'));
-        fileList.querySelectorAll('.file-item.drag-over').forEach(el => el.classList.remove('drag-over'));
-        fileList.querySelectorAll('.file-item.drag-over-invalid').forEach(el => el.classList.remove('drag-over-invalid'));
-    }
-}
 
 // ===== 批量移动 =====
 async function moveItems(sources, target) {
@@ -3139,65 +3085,136 @@ async function moveItems(sources, target) {
     }
 }
 
-// ===== 鼠标滑动多选（toggle 模式，坐标命中检测） =====
-
-const MULTI_SELECT_THRESHOLD = 5;
-
-// 通过 bounding rect 定位坐标下的文件项（与 CSS hover 区域一致）
-function _findItemAtPoint(x, y) {
-    const items = fileList.querySelectorAll('.file-item');
-    for (const item of items) {
-        const r = item.getBoundingClientRect();
-        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-            return item;
-        }
-    }
-    return null;
-}
+// ===== 鼠标事件状态机（统一处理滑动多选与自定义拖拽） =====
 
 function onFileListMouseDown(e) {
-    // 只响应左键，忽略复选框和菜单按钮
+    // 仅左键
     if (e.button !== 0) return;
-    if (e.target.closest('.file-menu-btn') || e.target.closest('.file-select')) return;
+    // 忽略菜单按钮与复选框区域（复选框让浏览器原生处理）
+    if (e.target.closest('.file-menu-btn')) return;
+    if (e.target.closest('.file-select')) return;
 
-    _multiSelectStartY = e.clientY;
-    _multiSelectActive = false;
-    _multiSelectStartOnItem = !!_getFileItemEl(e.target);
-    _multiSelectToggled.clear();
+    const itemEl = _getFileItemEl(e.target);
+
+    _downX = e.clientX;
+    _downY = e.clientY;
+    _mouseMode = 'idle';
+    _swipeToggled.clear();
+
+    if (!itemEl) {
+        _downPath = null;
+        _downType = null;
+        _downWasSelected = false;
+        _pendingDrag = false;
+        return;
+    }
+
+    _downPath = itemEl.dataset.path;
+    _downType = itemEl.dataset.type;
+    _downWasSelected = selectedExportFiles.has(_downPath);
+
+    // 判定是否为"双击按住"：距上次 click 时间小于阈值且同项 + 已勾选
+    const now = Date.now();
+    _pendingDrag = (
+        _downWasSelected &&
+        _lastClickPath === _downPath &&
+        (now - _lastClickTime) < DOUBLE_CLICK_INTERVAL
+    );
 }
 
 function onFileListMouseMove(e) {
     if (e.buttons !== 1) return;
-    if (_multiSelectStartY === 0) return;
+    if (!_downPath && _mouseMode === 'idle') return;
 
-    // 激活判定
-    if (!_multiSelectActive) {
-        const dy = Math.abs(e.clientY - _multiSelectStartY);
-        if (dy < MULTI_SELECT_THRESHOLD) return;
-        // 起始点在文件项上 → 必须等 HTML5 拖拽被取消后才激活
-        if (_multiSelectStartOnItem && !_dragWasCanceled) return;
-        _multiSelectActive = true;
+    const dx = e.clientX - _downX;
+    const dy = e.clientY - _downY;
+
+    if (_mouseMode === 'idle') {
+        if (Math.hypot(dx, dy) < MOUSE_MOVE_THRESHOLD) return;
+
+        if (_pendingDrag) {
+            _startCustomDrag(e);
+        } else {
+            _mouseMode = 'swipe';
+        }
+        // 进入交互模式后隐藏悬浮提示
+        _hideTooltip();
     }
 
-    // 通过 bounding rect 精确命中，与 CSS hover 区域完全一致
-    const itemEl = _findItemAtPoint(e.clientX, e.clientY);
-    if (!itemEl) return;
-
-    const path = itemEl.dataset.path;
-    if (!path || _multiSelectToggled.has(path)) return;
-
-    _multiSelectToggled.add(path);
-    const cb = itemEl.querySelector('.file-select input[type="checkbox"]');
-    if (cb) cb.click();
+    if (_mouseMode === 'swipe') {
+        const itemEl = _findItemAtPoint(e.clientX, e.clientY);
+        if (!itemEl) return;
+        const path = itemEl.dataset.path;
+        if (!path || _swipeToggled.has(path)) return;
+        _swipeToggled.add(path);
+        const cb = itemEl.querySelector('.file-select input[type="checkbox"]');
+        if (cb) cb.click();
+    } else if (_mouseMode === 'drag') {
+        // 更新幽灵位置
+        if (_customDragGhost) {
+            _customDragGhost.style.left = (e.clientX + 15) + 'px';
+            _customDragGhost.style.top = (e.clientY + 15) + 'px';
+        }
+        // 更新 hover 目标
+        const itemEl = _findItemAtPoint(e.clientX, e.clientY);
+        _updateDragOver(itemEl);
+    }
 }
 
-function onFileListMouseUp(e) {
-    _multiSelectActive = false;
-    _multiSelectStartY = 0;
-    _multiSelectStartOnItem = false;
-    _multiSelectToggled.clear();
-    _dragWasCanceled = false;
+async function onFileListMouseUp(e) {
+    const mode = _mouseMode;
+    const downPath = _downPath;
+    const downType = _downType;
+    const downWasSelected = _downWasSelected;
+
+    // 统一先重置瞬态状态（拖拽的异步收尾独立处理）
+    _mouseMode = 'idle';
+    _downPath = null;
+    _downType = null;
+    _downWasSelected = false;
+    _pendingDrag = false;
+    _swipeToggled.clear();
+
+    if (mode === 'drag') {
+        await _finishCustomDrop(e);
+        // 拖拽完成后重置 click 追踪，避免误触发后续双击
+        _lastClickTime = 0;
+        _lastClickPath = null;
+        return;
+    }
+
+    if (mode === 'swipe') {
+        // 滑动多选不触发 click / dblclick 语义
+        _lastClickTime = 0;
+        _lastClickPath = null;
+        return;
+    }
+
+    // mode === 'idle'：未移动，视为一次 click
+    if (!downPath) return;
+
+    const now = Date.now();
+    const isSecondClick = (
+        _lastClickPath === downPath &&
+        (now - _lastClickTime) < DOUBLE_CLICK_INTERVAL
+    );
+
+    if (isSecondClick) {
+        // 第二次 click 完成 → 双击
+        if (!downWasSelected) {
+            // 未勾选项的双击：打开/进入
+            handleFileClick(downPath, downType);
+        }
+        // 已勾选项的纯双击：什么都不做
+        _lastClickTime = 0;
+        _lastClickPath = null;
+    } else {
+        // 第一次 click：仅记录；主体单击不做事
+        _lastClickTime = now;
+        _lastClickPath = downPath;
+    }
 }
+
 
 // 清除所有勾选
 function _clearAllSelections() {
@@ -3210,4 +3227,123 @@ function _clearAllSelections() {
     });
     selectedExportFiles.clear();
     updateExportSelectionState();
+}
+
+// ===== 文件项悬浮操作提示 tooltip =====
+let _fileItemTooltip = null;
+let _tooltipCurrentItem = null;
+let _tooltipPendingItem = null;
+let _tooltipTimer = null;
+let _tooltipLastX = 0;
+let _tooltipLastY = 0;
+const TOOLTIP_DELAY = 1000;
+
+function _ensureTooltip() {
+    if (_fileItemTooltip) return _fileItemTooltip;
+    const el = document.createElement('div');
+    el.className = 'file-item-tooltip';
+    document.body.appendChild(el);
+    _fileItemTooltip = el;
+    return el;
+}
+
+function _clearTooltipTimer() {
+    if (_tooltipTimer) {
+        clearTimeout(_tooltipTimer);
+        _tooltipTimer = null;
+    }
+    _tooltipPendingItem = null;
+}
+
+function _hideTooltip() {
+    _clearTooltipTimer();
+    if (_fileItemTooltip) {
+        _fileItemTooltip.classList.remove('show');
+    }
+    _tooltipCurrentItem = null;
+}
+
+function _updateTooltipPosition(x, y) {
+    if (!_fileItemTooltip) return;
+    // 光标右下偏移；贴近视口边缘时翻转
+    const tip = _fileItemTooltip;
+    const margin = 14;
+    let left = x + margin;
+    let top = y + margin + 4;
+    const rect = tip.getBoundingClientRect();
+    if (left + rect.width > window.innerWidth - 8) {
+        left = x - rect.width - margin;
+    }
+    if (top + rect.height > window.innerHeight - 8) {
+        top = y - rect.height - margin;
+    }
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+}
+
+function _scheduleTooltip(itemEl, x, y) {
+    // 已显示且是同一项 → 仅更新位置
+    if (_tooltipCurrentItem === itemEl && _fileItemTooltip && _fileItemTooltip.classList.contains('show')) {
+        _updateTooltipPosition(x, y);
+        return;
+    }
+    // 换项或未显示 → 重置计时器
+    if (_tooltipPendingItem === itemEl) {
+        _tooltipLastX = x;
+        _tooltipLastY = y;
+        return;
+    }
+    _clearTooltipTimer();
+    if (_fileItemTooltip) _fileItemTooltip.classList.remove('show');
+    _tooltipCurrentItem = null;
+    _tooltipPendingItem = itemEl;
+    _tooltipLastX = x;
+    _tooltipLastY = y;
+    _tooltipTimer = setTimeout(() => {
+        _tooltipTimer = null;
+        const el = _tooltipPendingItem;
+        _tooltipPendingItem = null;
+        if (!el) return;
+        // 交互进行中则不显示
+        if (_mouseMode !== 'idle') return;
+        const path = el.dataset.path;
+        if (!path) return;
+        const isSelected = selectedExportFiles.has(path);
+        const text = isSelected ? t('tooltip_item_selected') : t('tooltip_item_unselected');
+        const tip = _ensureTooltip();
+        tip.textContent = text;
+        _updateTooltipPosition(_tooltipLastX, _tooltipLastY);
+        tip.classList.add('show');
+        _tooltipCurrentItem = el;
+    }, TOOLTIP_DELAY);
+}
+
+function onFileListMouseOver(e) {
+    // 状态机激活（滑动/拖拽）期间不显示 tooltip
+    if (_mouseMode !== 'idle') return _hideTooltip();
+    // 悬浮到菜单按钮或复选框区域时不显示
+    if (e.target.closest('.file-menu-btn') || e.target.closest('.file-select')) {
+        return _hideTooltip();
+    }
+    const itemEl = _getFileItemEl(e.target);
+    if (!itemEl) return _hideTooltip();
+    _scheduleTooltip(itemEl, e.clientX, e.clientY);
+}
+
+function onFileListMouseMoveTooltip(e) {
+    if (_mouseMode !== 'idle') return _hideTooltip();
+    if (e.target.closest('.file-menu-btn') || e.target.closest('.file-select')) {
+        return _hideTooltip();
+    }
+    const itemEl = _getFileItemEl(e.target);
+    if (!itemEl) return _hideTooltip();
+    _scheduleTooltip(itemEl, e.clientX, e.clientY);
+}
+
+function onFileListMouseOut(e) {
+    // 鼠标移出 fileList（relatedTarget 不在 fileList 内）时隐藏
+    const to = e.relatedTarget;
+    if (!to || !fileList.contains(to)) {
+        _hideTooltip();
+    }
 }

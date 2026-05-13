@@ -580,6 +580,30 @@ body.dark-mode .file-item.search-match {
     flex-shrink: 0;
 }
 
+/* 文件项悬浮操作提示 tooltip */
+.file-item-tooltip {
+    position: fixed;
+    z-index: 10001;
+    pointer-events: none;
+    background: rgba(31, 41, 55, 0.95);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm, 6px);
+    font-size: 12px;
+    line-height: 1.5;
+    max-width: 280px;
+    white-space: pre-line;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.file-item-tooltip.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
 .loading, .empty-state {
     text-align: center;
     padding: 40px 20px;
