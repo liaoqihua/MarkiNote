@@ -56,6 +56,7 @@ const editorCancelBtn = document.getElementById('editorCancelBtn');
 const editorSwapBtn = document.getElementById('editorSwapBtn');
 const saveIndicator = document.getElementById('saveIndicator');
 let _saveIndicatorTimer = null;
+const renderIndicator = document.getElementById('renderIndicator');
 
 // 存储当前文件的原始markdown内容
 let currentMarkdownSource = '';
@@ -120,6 +121,7 @@ function setupEventListeners() {
     editorCancelBtn.addEventListener('click', cancelEditMode);
     editorSwapBtn.addEventListener('click', toggleEditorPosition);
     editorTextarea.addEventListener('input', onEditorInput);
+    editorTextarea.addEventListener('keydown', onEditorTextareaKeydown);
     exportCurrentPdfBtn.addEventListener('click', exportCurrentFileToPdf);
     exportSelectedPdfBtn.addEventListener('click', exportSelectedFilesToPdf);
     if (deleteSelectedBtn) deleteSelectedBtn.addEventListener('click', deleteSelectedItems);
@@ -1595,6 +1597,9 @@ async function exitEditMode() {
         _editDebounceTimer = null;
     }
 
+    // 隐藏“渲染中”图标（如果还在显示）
+    hideRenderIndicator();
+
     // 移除快捷键监听
     document.removeEventListener('keydown', handleEditKeydown);
 
@@ -1621,30 +1626,94 @@ function onEditorInput() {
     // 更新 currentMarkdownSource 以便其他功能使用
     currentMarkdownSource = editorTextarea.value;
 
-    // 防抖渲染
+    // 防抖渲染：在用户停止输入 1s 后才渲染预览
+    // 渲染中动画仅在“真正开始渲染”时才显示，避免用户输入期间频繁闪烁
     if (_editDebounceTimer) clearTimeout(_editDebounceTimer);
     _editDebounceTimer = setTimeout(() => {
-        renderLivePreview();
-    }, 300);
+        showRenderIndicator();
+        // 让动画有机会出现一帧后再进行实际渲染（同步渲染会阻塞下一帧绘制）
+        requestAnimationFrame(() => renderLivePreview());
+    }, 1000);
+}
+
+// 编辑器 textarea 键盘事件：拦截 Tab 键，输入制表符而不是切换焦点
+function onEditorTextareaKeydown(e) {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+
+    const ta = editorTextarea;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const value = ta.value;
+
+    // 多行选中时按行缩进 / 反缩进
+    if (start !== end && value.substring(start, end).indexOf('\n') !== -1) {
+        const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+        const before = value.substring(0, lineStart);
+        const selected = value.substring(lineStart, end);
+        const after = value.substring(end);
+
+        if (e.shiftKey) {
+            // 反缩进：移除每行开头的一个制表符或最多 4 个空格
+            const replaced = selected.replace(/^(\t| {1,4})/gm, '');
+            const removed = selected.length - replaced.length;
+            ta.value = before + replaced + after;
+            // 调整选区
+            const firstLineRemoved = (selected.match(/^(\t| {1,4})/) || [''])[0].length;
+            ta.selectionStart = Math.max(lineStart, start - firstLineRemoved);
+            ta.selectionEnd = end - removed;
+        } else {
+            // 缩进：为每行开头添加制表符
+            const replaced = selected.replace(/^/gm, '\t');
+            const added = replaced.length - selected.length;
+            ta.value = before + replaced + after;
+            ta.selectionStart = start + 1;
+            ta.selectionEnd = end + added;
+        }
+    } else {
+        if (e.shiftKey) {
+            // 单行 / 无选区反缩进：移除光标所在行开头的制表符
+            const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+            const lineHead = value.substring(lineStart, lineStart + 4);
+            const m = lineHead.match(/^(\t| {1,4})/);
+            if (m) {
+                const removed = m[0].length;
+                ta.value = value.substring(0, lineStart) + value.substring(lineStart + removed);
+                ta.selectionStart = Math.max(lineStart, start - removed);
+                ta.selectionEnd = Math.max(lineStart, end - removed);
+            }
+        } else {
+            // 在光标位置插入制表符
+            ta.value = value.substring(0, start) + '\t' + value.substring(end);
+            ta.selectionStart = ta.selectionEnd = start + 1;
+        }
+    }
+
+    // 手动触发 input 事件，启动防抖渲染
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 // 客户端实时渲染 Markdown 预览
 function renderLivePreview() {
     const mdText = editorTextarea.value;
+    const savedScrollTop = previewContent.scrollTop;
 
     if (typeof marked === 'undefined') {
         // 如果 marked 未加载，使用简单的转义显示
-        previewContent.innerHTML = `<div class="markdown-body"><pre>${escapeHtml(mdText)}</pre></div>`;
+        const body = getOrCreateMarkdownBody();
+        body.innerHTML = `<pre>${escapeHtml(mdText)}</pre>`;
+        previewContent.scrollTop = savedScrollTop;
+        hideRenderIndicator();
         return;
     }
 
     try {
         const html = marked.parse(mdText);
-        const scrollTop = previewContent.scrollTop;
-        previewContent.innerHTML = `<div class="markdown-body">${html}</div>`;
 
-        // 恢复滚动位置
-        previewContent.scrollTop = scrollTop;
+        // 只替换 .markdown-body 的子节点，不销毁容器本身，避免滚动容器重建造成闪屏
+        const body = getOrCreateMarkdownBody();
+        body.innerHTML = html;
+        previewContent.scrollTop = savedScrollTop;
 
         // 添加代码块复制按钮
         addCodeCopyButtons();
@@ -1660,9 +1729,81 @@ function renderLivePreview() {
 
         // 重建目录
         buildToc();
+
+        // 布局稳定后兜底恢复一次滚动位置
+        requestAnimationFrame(() => {
+            previewContent.scrollTop = savedScrollTop;
+        });
     } catch (err) {
         console.error('实时预览渲染失败:', err);
-        previewContent.innerHTML = `<div class="markdown-body"><pre>${escapeHtml(mdText)}</pre></div>`;
+        const body = getOrCreateMarkdownBody();
+        body.innerHTML = `<pre>${escapeHtml(mdText)}</pre>`;
+        previewContent.scrollTop = savedScrollTop;
+    } finally {
+        // 渲染完成后隐藏“渲染中”动画图标
+        hideRenderIndicator();
+    }
+}
+
+// 获取或创建 previewContent 内的 .markdown-body 容器
+function getOrCreateMarkdownBody() {
+    let body = previewContent.querySelector('.markdown-body');
+    if (!body) {
+        body = document.createElement('div');
+        body.className = 'markdown-body';
+        previewContent.appendChild(body);
+    }
+    return body;
+}
+
+// 渲染中动画硬编码最小显示时间（1s）
+const RENDER_INDICATOR_MIN_DURATION = 1000;
+let _renderShownAt = 0;
+let _renderHideTimer = null;
+
+// 显示预览渲染中动画图标
+function showRenderIndicator() {
+    if (!renderIndicator) return;
+    // 取消未完成的延迟隐藏
+    if (_renderHideTimer) {
+        clearTimeout(_renderHideTimer);
+        _renderHideTimer = null;
+    }
+    _renderShownAt = Date.now();
+    renderIndicator.style.display = '';
+    // 下一帧才添加 show 以触发过渡动画
+    requestAnimationFrame(() => {
+        renderIndicator.classList.add('show');
+    });
+}
+
+// 隐藏预览渲染中动画图标：保证至少显示 1s
+function hideRenderIndicator() {
+    if (!renderIndicator) return;
+    // 计算已显示时长，不足最小时长则延迟隐藏
+    const elapsed = _renderShownAt ? Date.now() - _renderShownAt : RENDER_INDICATOR_MIN_DURATION;
+    const remain = Math.max(0, RENDER_INDICATOR_MIN_DURATION - elapsed);
+    if (_renderHideTimer) {
+        clearTimeout(_renderHideTimer);
+        _renderHideTimer = null;
+    }
+    const doHide = () => {
+        renderIndicator.classList.remove('show');
+        _renderShownAt = 0;
+        // 过渡结束后隐藏元素
+        setTimeout(() => {
+            if (!renderIndicator.classList.contains('show')) {
+                renderIndicator.style.display = 'none';
+            }
+        }, 220);
+    };
+    if (remain > 0) {
+        _renderHideTimer = setTimeout(() => {
+            _renderHideTimer = null;
+            doHide();
+        }, remain);
+    } else {
+        doHide();
     }
 }
 
@@ -2827,7 +2968,16 @@ var MERMAID_STYLE_PRESETS = {
             sectionBkgColor: '#dbeafe', altSectionBkgColor: '#fed7aa', gridColor: '#e5e7eb',
             taskBkgColor: '#2563eb', taskTextColor: '#ffffff',
             git0: '#2563eb', git1: '#f97316', git2: '#22c55e', git3: '#a855f7',
-            git4: '#ec4899', git5: '#06b6d4', git6: '#eab308', git7: '#ef4444'
+            git4: '#ec4899', git5: '#06b6d4', git6: '#eab308', git7: '#ef4444',
+            shapeColors: {
+                rect:      { fill: '#dbeafe', stroke: '#2563eb', text: '#1e40af' },
+                rounded:   { fill: '#bbf7d0', stroke: '#22c55e', text: '#166534' },
+                diamond:   { fill: '#fed7aa', stroke: '#f97316', text: '#9a3412' },
+                hexagon:   { fill: '#e9d5ff', stroke: '#a855f7', text: '#6b21a8' },
+                cylinder:  { fill: '#cffafe', stroke: '#06b6d4', text: '#155e75' },
+                circle:    { fill: '#dbeafe', stroke: '#2563eb', text: '#1e40af' },
+                ellipse:   { fill: '#bbf7d0', stroke: '#22c55e', text: '#166534' }
+            }
         },
         dark: {
             fontFamily: MERMAID_FONT_DEFAULT, fontSize: '14px', darkMode: true, background: 'transparent',
@@ -2852,7 +3002,16 @@ var MERMAID_STYLE_PRESETS = {
             sectionBkgColor: '#1e3a8a', altSectionBkgColor: '#7c2d12', gridColor: '#334155',
             taskBkgColor: '#60a5fa', taskTextColor: '#0f172a',
             git0: '#60a5fa', git1: '#fb923c', git2: '#4ade80', git3: '#c084fc',
-            git4: '#f472b6', git5: '#22d3ee', git6: '#facc15', git7: '#f87171'
+            git4: '#f472b6', git5: '#22d3ee', git6: '#facc15', git7: '#f87171',
+            shapeColors: {
+                rect:      { fill: '#1e3a8a', stroke: '#60a5fa', text: '#dbeafe' },
+                rounded:   { fill: '#14532d', stroke: '#4ade80', text: '#bbf7d0' },
+                diamond:   { fill: '#7c2d12', stroke: '#fb923c', text: '#fed7aa' },
+                hexagon:   { fill: '#4c1d95', stroke: '#c084fc', text: '#e9d5ff' },
+                cylinder:  { fill: '#164e63', stroke: '#22d3ee', text: '#cffafe' },
+                circle:    { fill: '#1e3a8a', stroke: '#60a5fa', text: '#dbeafe' },
+                ellipse:   { fill: '#14532d', stroke: '#4ade80', text: '#bbf7d0' }
+            }
         }
     },
     // Notion 极简风 - 白底 + 浅灰边框 + Notion 蓝单一强调色 (fireworks-tech-graph Notion Clean)
@@ -2921,6 +3080,69 @@ function getCurrentMermaidStyle() {
         if (saved && MERMAID_STYLE_PRESETS[saved]) return saved;
     } catch (e) {}
     return MERMAID_STYLE_DEFAULT;
+}
+
+// 检测 SVG 节点中 Mermaid 渲染的形状类型
+function detectNodeShape(nodeGroup) {
+    var shape = nodeGroup.querySelector('rect, circle, ellipse, polygon, path');
+    if (!shape) return 'rect';
+    var tag = shape.tagName.toLowerCase();
+    if (tag === 'circle') return 'circle';
+    if (tag === 'ellipse') return 'ellipse';
+    if (tag === 'path') return 'cylinder';
+    if (tag === 'polygon') {
+        var raw = (shape.getAttribute('points') || '').trim().split(/[\s,]+/).filter(Boolean);
+        var numPts = raw.length / 2;
+        if (numPts === 6) return 'hexagon';
+        return 'diamond';  // 4 点菱形 或 平行四边形
+    }
+    if (tag === 'rect') {
+        var rx = parseFloat(shape.getAttribute('rx')) || 0;
+        return rx >= 5 ? 'rounded' : 'rect';
+    }
+    return 'rect';
+}
+
+// 基于形状语义对 SVG 节点进行彩色映射（仅 flat 风格生效）
+function applyMermaidShapeColors(container) {
+    var styleKey = getCurrentMermaidStyle();
+    if (styleKey !== 'flat') return;
+    var preset = MERMAID_STYLE_PRESETS['flat'];
+    if (!preset) return;
+    var isDark = document.body && document.body.classList.contains('dark-mode');
+    var themeVars = isDark ? preset.dark : preset.light;
+    var shapeColors = themeVars.shapeColors;
+    if (!shapeColors) return;
+
+    var svg = container.querySelector('svg');
+    if (!svg) return;
+
+    var nodes = svg.querySelectorAll('g.node');
+    nodes.forEach(function (node) {
+        // 跳过 cluster 内的 wrapper（cluster-label 等）
+        if (node.closest('g.cluster') && node.querySelector('g.cluster-label')) return;
+        var shapeType = detectNodeShape(node);
+        var color = shapeColors[shapeType] || shapeColors['rect'];
+        if (!color) return;
+
+        // 主填充形状
+        var shape = node.querySelector('rect, circle, ellipse, polygon, path');
+        if (shape) {
+            if (color.fill) shape.setAttribute('fill', color.fill);
+            if (color.stroke) shape.setAttribute('stroke', color.stroke);
+        }
+
+        // 文本颜色：SVG <text> 和 foreignObject 内的文本
+        if (color.text) {
+            node.querySelectorAll('text').forEach(function (t) {
+                t.setAttribute('fill', color.text);
+            });
+            node.querySelectorAll('foreignObject').forEach(function (fo) {
+                var div = fo.querySelector('div');
+                if (div) div.style.color = color.text;
+            });
+        }
+    });
 }
 
 function buildMermaidConfig() {
@@ -3059,6 +3281,7 @@ function buildMermaidConfig() {
 // 全局 MERMAID_CONFIG，调用者可随时读取最新主题配置
 var MERMAID_CONFIG = buildMermaidConfig();
 window.MERMAID_CONFIG = MERMAID_CONFIG;
+window.applyMermaidShapeColors = applyMermaidShapeColors;
 window.buildMermaidConfig = buildMermaidConfig;
 
 // 初始化Mermaid
@@ -3307,6 +3530,7 @@ async function renderMermaidDiagrams() {
                 // 使用 mermaid.render() 方法渲染
                 const { svg } = await mermaid.render(id, graphDefinition);
                 mermaidDiv.innerHTML = svg;
+                applyMermaidShapeColors(container);
                 console.log(`✅ 图表 ${i + 1} 渲染成功`);
             } catch (renderErr) {
                 console.error(`❌ 图表 ${i + 1} 渲染失败:`, renderErr);

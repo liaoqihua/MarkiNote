@@ -21,6 +21,7 @@
             source_code: '源代码', edit_source: '编辑源代码',
             edit_document: '编辑文档', preview_mode: '预览',
             exit_edit: '退出编辑', unsaved_exit_edit: '您有未保存的改动，确定要退出编辑模式吗？',
+            rendering_preview: '渲染中…',
             select_new_type: '选择新建类型', new_file: '新建文件', new_folder: '新建文件夹',
             file_name: '文件名', file_name_placeholder: '请输入文件名（不含扩展名）',
             file_type: '文件类型', file_name_hint: '💡 提示：文件名无需输入扩展名',
@@ -130,6 +131,7 @@
             source_code: 'Source Code', edit_source: 'Edit Source Code',
             edit_document: 'Edit Document', preview_mode: 'Preview',
             exit_edit: 'Exit Edit', unsaved_exit_edit: 'You have unsaved changes. Exit edit mode?',
+            rendering_preview: 'Rendering…',
             select_new_type: 'Select Type', new_file: 'New File', new_folder: 'New Folder',
             file_name: 'File Name', file_name_placeholder: 'Enter file name (without extension)',
             file_type: 'File Type', file_name_hint: '💡 Tip: No need to enter file extension',
@@ -239,6 +241,7 @@
             source_code: 'Code source', edit_source: 'Modifier le code source',
                         edit_document: 'Modifier le document', preview_mode: 'Aperçu',
                         exit_edit: "Quitter l'édition", unsaved_exit_edit: "Modifications non enregistrées. Quitter l'édition ?",
+                        rendering_preview: 'Rendu en cours…',
             select_new_type: 'Choisir le type', new_file: 'Nouveau fichier', new_folder: 'Nouveau dossier',
             file_name: 'Nom du fichier', file_name_placeholder: 'Entrez le nom (sans extension)',
             file_type: 'Type de fichier', file_name_hint: "💡 Pas besoin d'extension",
@@ -343,6 +346,7 @@
             source_code: 'ソースコード', edit_source: 'ソースを編集',
                         edit_document: 'ドキュメントを編集', preview_mode: 'プレビュー',
                         exit_edit: '編集を終了', unsaved_exit_edit: '未保存の変更があります。編集モードを終了しますか？',
+                        rendering_preview: 'レンダリング中…',
             select_new_type: '種類を選択', new_file: '新規ファイル', new_folder: '新規フォルダ',
             file_name: 'ファイル名', file_name_placeholder: 'ファイル名を入力（拡張子不要）',
             file_type: 'ファイルの種類', file_name_hint: '💡 拡張子は不要です',
@@ -478,6 +482,8 @@
         if (cancelBtnSpan) cancelBtnSpan.textContent = t('exit_edit');
         const saveIndicatorText = document.querySelector('.preview-editor-save-text');
         if (saveIndicatorText) saveIndicatorText.textContent = t('save_success');
+        const renderIndicatorText = document.querySelector('.preview-editor-render-text');
+        if (renderIndicatorText) renderIndicatorText.textContent = t('rendering_preview');
 
         // TOC toggle button
         _a('#tocToggleBtn', 'title', 'toc_toggle');

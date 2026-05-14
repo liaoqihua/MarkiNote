@@ -1428,6 +1428,9 @@
             try {
                 const { svg } = await mermaid.render(id, mermaidCode);
                 mermaidDiv.innerHTML = svg;
+                if (typeof window.applyMermaidShapeColors === 'function') {
+                    window.applyMermaidShapeColors(container);
+                }
             } catch (err) {
                 console.error(`Mermaid 图表 ${index + 1} 渲染失败:`, err);
                 // 显示友好的错误提示，同时保留原始代码供用户查看

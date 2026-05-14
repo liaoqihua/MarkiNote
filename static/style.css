@@ -972,6 +972,39 @@ body.dark-mode .file-item.search-match {
     animation: save-check-pop 0.4s ease;
 }
 
+/* 渲染中提示动画图标 */
+.preview-editor-render-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--accent-color, #4a90e2);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    opacity: 0;
+    transform: scale(0.85);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.preview-editor-render-indicator.show {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.preview-editor-render-indicator svg {
+    flex-shrink: 0;
+}
+
+.preview-editor-render-indicator .render-spin {
+    animation: render-spin 0.9s linear infinite;
+    transform-origin: center;
+}
+
+@keyframes render-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .preview-editor-actions .btn-sm {
     padding: 4px 10px;
     font-size: 12px;
