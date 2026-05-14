@@ -559,15 +559,27 @@
 /* AI 消息内 Mermaid 图表容器 */
 .ai-mermaid-container {
     position: relative;
-    margin: 10px 0;
-    padding: 12px;
-    background: var(--sidebar-bg);
+    margin: 12px 0;
+    padding: 14px 12px;
+    background:
+        linear-gradient(135deg, var(--sidebar-bg) 0%, var(--bg-color) 100%);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     overflow-x: auto;
     display: flex;
     justify-content: center;
     align-items: center;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.04),
+        0 2px 6px rgba(15, 23, 42, 0.05);
+    transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.ai-mermaid-container:hover {
+    border-color: rgba(59, 130, 246, 0.35);
+    box-shadow:
+        0 2px 4px rgba(15, 23, 42, 0.06),
+        0 6px 18px rgba(15, 23, 42, 0.08);
 }
 
 .ai-mermaid-container .mermaid {
@@ -577,6 +589,44 @@
 .ai-mermaid-container svg {
     max-width: 100%;
     height: auto;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.05));
+}
+
+.ai-mermaid-container svg text {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.ai-mermaid-container .edgePath path,
+.ai-mermaid-container .flowchart-link {
+    stroke-width: 1.6px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.ai-mermaid-container .node rect,
+.ai-mermaid-container .node circle,
+.ai-mermaid-container .node ellipse,
+.ai-mermaid-container .node polygon,
+.ai-mermaid-container .node path {
+    stroke-width: 1.4px;
+}
+
+body.dark-mode .ai-mermaid-container {
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.25),
+        0 2px 6px rgba(0, 0, 0, 0.30);
+}
+
+body.dark-mode .ai-mermaid-container:hover {
+    border-color: rgba(96, 165, 250, 0.45);
+    box-shadow:
+        0 4px 12px rgba(0, 0, 0, 0.35),
+        0 6px 18px rgba(0, 0, 0, 0.40);
+}
+
+body.dark-mode .ai-mermaid-container svg {
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.40));
 }
 
 /* AI 消息内 Mermaid 图表工具栏（右上角） */

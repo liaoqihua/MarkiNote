@@ -31,6 +31,12 @@
             language_label: '语言 / Language', language_hint: 'AI 回复将使用所选语言',
             theme_label: '主题 / Theme',
             theme_light: '浅色', theme_dark: '深色', theme_blue: '蓝色', theme_pink: '粉色',
+                        mermaid_style_label: 'Mermaid 主题',
+                        mermaid_style_hint: '切换后预览区图表会自动重新渲染',
+                        mermaid_style_classic: '经典蓝', mermaid_style_neo: 'Neo 现代',
+                        mermaid_style_sketch: '手绘草图', mermaid_style_forest: '森林绿',
+                        mermaid_style_midnight: '扁平图标风', mermaid_style_mono: 'Notion 极简风',
+                                    mermaid_style_flat: '扁平图标风', mermaid_style_notion: 'Notion 极简风',
             delete_confirm: '确定要删除 "{name}" 吗？',
             delete_success: '删除成功', move_success: '移动成功',
             move_confirm: '确定要将 "{item}" 移动到 "{target}" 吗？',
@@ -134,6 +140,12 @@
             language_label: 'Language', language_hint: 'AI will respond in the selected language',
             theme_label: 'Theme',
             theme_light: 'Light', theme_dark: 'Dark', theme_blue: 'Blue', theme_pink: 'Pink',
+                        mermaid_style_label: 'Mermaid Theme',
+                        mermaid_style_hint: 'Diagrams in the preview will re-render automatically',
+                        mermaid_style_classic: 'Classic Blue', mermaid_style_neo: 'Neo Modern',
+                        mermaid_style_sketch: 'Hand-drawn', mermaid_style_forest: 'Forest',
+                        mermaid_style_midnight: 'Flat Icon', mermaid_style_mono: 'Notion Clean',
+                                    mermaid_style_flat: 'Flat Icon', mermaid_style_notion: 'Notion Clean',
             delete_confirm: 'Are you sure you want to delete "{name}"?',
             delete_success: 'Deleted successfully', move_success: 'Moved successfully',
             move_confirm: 'Move "{item}" to "{target}"?',
@@ -237,6 +249,12 @@
             language_label: 'Langue', language_hint: "L'IA répondra dans la langue sélectionnée",
             theme_label: 'Thème',
             theme_light: 'Clair', theme_dark: 'Sombre', theme_blue: 'Bleu', theme_pink: 'Rose',
+                        mermaid_style_label: 'Thème Mermaid',
+                        mermaid_style_hint: 'Les diagrammes de l’aperçu seront re-rendus automatiquement',
+                        mermaid_style_classic: 'Bleu classique', mermaid_style_neo: 'Neo moderne',
+                        mermaid_style_sketch: 'Esquisse', mermaid_style_forest: 'Forêt',
+                        mermaid_style_midnight: 'Icônes plates', mermaid_style_mono: 'Notion épuré',
+                                    mermaid_style_flat: 'Icônes plates', mermaid_style_notion: 'Notion épuré',
             delete_confirm: 'Supprimer « {name} » ?',
             delete_success: 'Supprimé', move_success: 'Déplacé',
             move_confirm: 'Déplacer « {item} » vers « {target} » ?',
@@ -335,6 +353,12 @@
             language_label: '言語', language_hint: 'AIが選択した言語で回答します',
             theme_label: 'テーマ',
             theme_light: 'ライト', theme_dark: 'ダーク', theme_blue: 'ブルー', theme_pink: 'ピンク',
+                        mermaid_style_label: 'Mermaid テーマ',
+                        mermaid_style_hint: '切り替え後、プレビューの図は自動的に再描画されます',
+                        mermaid_style_classic: 'クラシックブルー', mermaid_style_neo: 'Neo モダン',
+                        mermaid_style_sketch: '手描き', mermaid_style_forest: 'フォレスト',
+                        mermaid_style_midnight: 'フラットアイコン', mermaid_style_mono: 'Notion ミニマル',
+                                    mermaid_style_flat: 'フラットアイコン', mermaid_style_notion: 'Notion ミニマル',
             delete_confirm: '「{name}」を削除しますか？',
             delete_success: '削除しました', move_success: '移動しました',
             move_confirm: '「{item}」を「{target}」に移動しますか？',
@@ -523,10 +547,18 @@
         _s('#settingsModal .modal-header h3', 'settings');
         _s('#settingsModal .settings-section:first-child .settings-label', 'language_label');
         _s('#settingsModal .settings-hint', 'language_hint');
-        _s('#settingsModal .settings-section:last-child .settings-label', 'theme_label');
+        _s('#settingsModal .settings-section:nth-child(2) .settings-label', 'theme_label');
         document.querySelectorAll('.theme-option span').forEach(el => {
             const theme = el.parentElement.dataset.theme;
             el.textContent = t('theme_' + theme);
+        });
+
+        // Auto-bind elements with [data-i18n] (e.g. Mermaid theme section)
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (!key) return;
+            const txt = t(key);
+            if (txt && txt !== key) el.textContent = txt;
         });
 
         // Context menus

@@ -1995,6 +1995,7 @@ function openSettingsModal() {
     const langSelect = document.getElementById('settingsLanguageSelect');
     langSelect.value = localStorage.getItem('appLanguage') || 'zh-CN';
     updateThemeUI();
+    if (typeof updateMermaidStyleUI === 'function') updateMermaidStyleUI();
     settingsModal.classList.add('show');
 }
 
@@ -2009,6 +2010,37 @@ function setTheme(theme) {
     else if (theme === 'pink') document.body.classList.add('pink-mode');
     localStorage.setItem('theme', theme);
     updateThemeUI();
+    // 主题切换后同步重新初始化并重渲染预览区 Mermaid 图表
+    try { refreshMermaidTheme(); } catch (e) { console.warn('Mermaid 主题刷新失败:', e); }
+}
+
+// 重新生成 Mermaid 配置并刷新预览区已渲染的图表
+function refreshMermaidTheme() {
+    if (typeof buildMermaidConfig === 'function') {
+        MERMAID_CONFIG = buildMermaidConfig();
+        window.MERMAID_CONFIG = MERMAID_CONFIG;
+    }
+    if (window.mermaid) {
+        try { mermaid.initialize(MERMAID_CONFIG); } catch (e) { /* ignore */ }
+    }
+    // 将预览区已渲染的 .mermaid-container 还原为 <pre><code> 后重新渲染
+    var preview = (typeof previewContent !== 'undefined' && previewContent) ||
+                  document.getElementById('preview-content');
+    if (!preview) return;
+    var containers = preview.querySelectorAll('.mermaid-container');
+    if (!containers.length) return;
+    containers.forEach(function (c) {
+        var src = c.getAttribute('data-mermaid-source') || '';
+        var pre = document.createElement('pre');
+        var code = document.createElement('code');
+        code.className = 'language-mermaid';
+        code.textContent = src;
+        pre.appendChild(code);
+        c.parentNode.replaceChild(pre, c);
+    });
+    if (typeof renderMermaidDiagrams === 'function') {
+        renderMermaidDiagrams();
+    }
 }
 
 function updateThemeUI() {
@@ -2027,6 +2059,25 @@ function loadTheme() {
     const saved = localStorage.getItem('theme') || 'light';
     setTheme(saved);
     applyLanguage();
+}
+
+// ===== Mermaid 风格预设 =====
+function setMermaidStyle(styleKey) {
+    if (!MERMAID_STYLE_PRESETS[styleKey]) styleKey = MERMAID_STYLE_DEFAULT;
+    try { localStorage.setItem(MERMAID_STYLE_KEY, styleKey); } catch (e) {}
+    updateMermaidStyleUI();
+    try { refreshMermaidTheme(); } catch (e) { console.warn('Mermaid 风格应用失败:', e); }
+}
+
+function updateMermaidStyleUI() {
+    var current = getCurrentMermaidStyle();
+    document.querySelectorAll('.mermaid-style-option').forEach(function (opt) {
+        opt.classList.toggle('active', opt.dataset.mermaidStyle === current);
+    });
+}
+
+function loadMermaidStyle() {
+    updateMermaidStyleUI();
 }
 
 // ===== 新建选择功能 =====
@@ -2409,125 +2460,606 @@ function loadTocState() {
 }
 
 // Mermaid 统一配置 - 覆盖所有支持的图表类型
-var MERMAID_CONFIG = {
-    startOnLoad: false,
-    theme: 'default',
-    securityLevel: 'loose',
-    suppressErrorRendering: false,
-    fontFamily: 'Arial, sans-serif',
-    logLevel: 'error',
-    // 流程图
-    flowchart: {
-        useMaxWidth: true,
-        htmlLabels: true,
-        curve: 'basis',
-        padding: 15,
-        nodeSpacing: 50,
-        rankSpacing: 50
-    },
+// 使用 base 主题 + 自定义 themeVariables，多风格预设可选
+var MERMAID_FONT_DEFAULT = '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif';
+var MERMAID_FONT_HANDDRAWN = '"Caveat", "Comic Sans MS", "Marker Felt", "PingFang SC", "Microsoft YaHei", cursive';
+var MERMAID_FONT_MONO = '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, "PingFang SC", "Microsoft YaHei", monospace';
+var MERMAID_FONT_NOTION = '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif';
+// 兼容历史变量名
+var MERMAID_FONT_FAMILY = MERMAID_FONT_DEFAULT;
+
+// 经典蓝（默认）- 浅色 themeVariables
+var MERMAID_LIGHT_VARS = {
+    fontFamily: MERMAID_FONT_FAMILY,
+    fontSize: '14px',
+    background: 'transparent',
+    // 通用节点
+    primaryColor: '#dbeafe',
+    primaryTextColor: '#1e3a5f',
+    primaryBorderColor: '#3b82f6',
+    secondaryColor: '#fef3c7',
+    secondaryTextColor: '#92400e',
+    secondaryBorderColor: '#f59e0b',
+    tertiaryColor: '#dcfce7',
+    tertiaryTextColor: '#14532d',
+    tertiaryBorderColor: '#10b981',
+    lineColor: '#64748b',
+    mainBkg: '#dbeafe',
+    secondBkg: '#fef3c7',
+    tertiaryBkg: '#dcfce7',
+    nodeBorder: '#3b82f6',
+    nodeTextColor: '#1e3a5f',
+    clusterBkg: '#f8fafc',
+    clusterBorder: '#cbd5e1',
+    titleColor: '#1e293b',
+    edgeLabelBackground: '#ffffff',
     // 时序图
-    sequence: {
-        useMaxWidth: true,
-        showSequenceNumbers: false,
-        actorFontSize: 14,
-        actorFontWeight: 400,
-        noteFontSize: 14,
-        noteFontWeight: 400,
-        messageFontSize: 14,
-        messageFontWeight: 400,
-        wrap: true,
-        width: 150
-    },
-    // 类图
-    class: {
-        useMaxWidth: true,
-        fontSize: 14
-    },
-    // 状态图
-    state: {
-        useMaxWidth: true,
-        fontSize: 14
-    },
-    // ER图
-    er: {
-        useMaxWidth: true,
-        fontSize: 14
-    },
+    actorBkg: '#dbeafe',
+    actorBorder: '#3b82f6',
+    actorTextColor: '#1e3a5f',
+    actorLineColor: '#94a3b8',
+    signalColor: '#475569',
+    signalTextColor: '#1e293b',
+    labelBoxBkgColor: '#fef3c7',
+    labelBoxBorderColor: '#f59e0b',
+    labelTextColor: '#92400e',
+    loopTextColor: '#1e293b',
+    noteBkgColor: '#fef9c3',
+    noteTextColor: '#713f12',
+    noteBorderColor: '#facc15',
+    activationBkgColor: '#bfdbfe',
+    activationBorderColor: '#3b82f6',
+    // 状态图 / 类图
+    altBackground: '#f1f5f9',
+    classText: '#1e293b',
+    // 饼图配色
+    pie1: '#3b82f6', pie2: '#10b981', pie3: '#f59e0b', pie4: '#ec4899',
+    pie5: '#8b5cf6', pie6: '#06b6d4', pie7: '#f43f5e', pie8: '#84cc16',
+    pie9: '#0ea5e9', pie10: '#eab308', pie11: '#a855f7', pie12: '#14b8a6',
+    pieTitleTextColor: '#1e293b',
+    pieSectionTextColor: '#ffffff',
+    pieLegendTextColor: '#475569',
+    pieStrokeColor: '#ffffff',
+    pieOuterStrokeColor: '#cbd5e1',
+    pieOpacity: '0.95',
     // 甘特图
-    gantt: {
-        useMaxWidth: true,
-        titleTopMargin: 25,
-        barHeight: 20,
-        barGap: 4,
-        topPadding: 50,
-        leftPadding: 75,
-        gridLineStartPadding: 35,
-        fontSize: 14,
-        numberSectionStyles: 4
+    sectionBkgColor: '#dbeafe',
+    altSectionBkgColor: '#fef3c7',
+    gridColor: '#e2e8f0',
+    todayLineColor: '#ef4444',
+    taskBkgColor: '#3b82f6',
+    taskTextColor: '#ffffff',
+    taskTextDarkColor: '#1e293b',
+    taskTextOutsideColor: '#1e293b',
+    taskTextLightColor: '#ffffff',
+    taskTextClickableColor: '#ffffff',
+    doneTaskBkgColor: '#94a3b8',
+    doneTaskBorderColor: '#475569',
+    activeTaskBkgColor: '#3b82f6',
+    activeTaskBorderColor: '#1d4ed8',
+    critBorderColor: '#dc2626',
+    critBkgColor: '#fecaca',
+    // git
+    git0: '#3b82f6', git1: '#10b981', git2: '#f59e0b', git3: '#ec4899',
+    git4: '#8b5cf6', git5: '#06b6d4', git6: '#f43f5e', git7: '#84cc16',
+    gitBranchLabel0: '#ffffff', gitBranchLabel1: '#ffffff', gitBranchLabel2: '#ffffff',
+    gitBranchLabel3: '#ffffff', gitBranchLabel4: '#ffffff', gitBranchLabel5: '#ffffff',
+    gitBranchLabel6: '#ffffff', gitBranchLabel7: '#ffffff'
+};
+
+// 经典蓝 - 深色 themeVariables
+var MERMAID_DARK_VARS = {
+    fontFamily: MERMAID_FONT_FAMILY,
+    fontSize: '14px',
+    darkMode: true,
+    background: 'transparent',
+    primaryColor: '#1e3a5f',
+    primaryTextColor: '#e2e8f0',
+    primaryBorderColor: '#3b82f6',
+    secondaryColor: '#3f2a0a',
+    secondaryTextColor: '#fde68a',
+    secondaryBorderColor: '#f59e0b',
+    tertiaryColor: '#14352a',
+    tertiaryTextColor: '#bbf7d0',
+    tertiaryBorderColor: '#10b981',
+    lineColor: '#94a3b8',
+    mainBkg: '#1e3a5f',
+    secondBkg: '#3f2a0a',
+    tertiaryBkg: '#14352a',
+    nodeBorder: '#3b82f6',
+    nodeTextColor: '#e2e8f0',
+    clusterBkg: '#0f172a',
+    clusterBorder: '#334155',
+    titleColor: '#f1f5f9',
+    edgeLabelBackground: '#1e293b',
+    actorBkg: '#1e3a5f',
+    actorBorder: '#3b82f6',
+    actorTextColor: '#e2e8f0',
+    actorLineColor: '#475569',
+    signalColor: '#cbd5e1',
+    signalTextColor: '#e2e8f0',
+    labelBoxBkgColor: '#3f2a0a',
+    labelBoxBorderColor: '#f59e0b',
+    labelTextColor: '#fde68a',
+    loopTextColor: '#e2e8f0',
+    noteBkgColor: '#451a03',
+    noteTextColor: '#fde68a',
+    noteBorderColor: '#f59e0b',
+    activationBkgColor: '#1e3a5f',
+    activationBorderColor: '#3b82f6',
+    altBackground: '#1e293b',
+    classText: '#e2e8f0',
+    pie1: '#60a5fa', pie2: '#34d399', pie3: '#fbbf24', pie4: '#f472b6',
+    pie5: '#a78bfa', pie6: '#22d3ee', pie7: '#fb7185', pie8: '#a3e635',
+    pie9: '#38bdf8', pie10: '#facc15', pie11: '#c084fc', pie12: '#2dd4bf',
+    pieTitleTextColor: '#f1f5f9',
+    pieSectionTextColor: '#0f172a',
+    pieLegendTextColor: '#cbd5e1',
+    pieStrokeColor: '#0f172a',
+    pieOuterStrokeColor: '#475569',
+    pieOpacity: '0.95',
+    sectionBkgColor: '#1e3a5f',
+    altSectionBkgColor: '#3f2a0a',
+    gridColor: '#334155',
+    todayLineColor: '#ef4444',
+    taskBkgColor: '#3b82f6',
+    taskTextColor: '#ffffff',
+    taskTextDarkColor: '#0f172a',
+    taskTextOutsideColor: '#e2e8f0',
+    taskTextLightColor: '#ffffff',
+    taskTextClickableColor: '#ffffff',
+    doneTaskBkgColor: '#475569',
+    doneTaskBorderColor: '#94a3b8',
+    activeTaskBkgColor: '#3b82f6',
+    activeTaskBorderColor: '#60a5fa',
+    critBorderColor: '#f87171',
+    critBkgColor: '#7f1d1d',
+    git0: '#60a5fa', git1: '#34d399', git2: '#fbbf24', git3: '#f472b6',
+    git4: '#a78bfa', git5: '#22d3ee', git6: '#fb7185', git7: '#a3e635',
+    gitBranchLabel0: '#0f172a', gitBranchLabel1: '#0f172a', gitBranchLabel2: '#0f172a',
+    gitBranchLabel3: '#0f172a', gitBranchLabel4: '#0f172a', gitBranchLabel5: '#0f172a',
+    gitBranchLabel6: '#0f172a', gitBranchLabel7: '#0f172a'
+};
+
+// =========================================================================
+// Mermaid 风格预设（在设置面板中可选）
+// 每个风格提供 light/dark 两套 themeVariables、look、flowchart 控制参数
+// =========================================================================
+var MERMAID_STYLE_PRESETS = {
+    // 经典蓝 - 项目默认
+    classic: {
+        look: 'classic',
+        flowchart: { curve: 'basis' },
+        light: MERMAID_LIGHT_VARS,
+        dark: MERMAID_DARK_VARS
     },
-    // 饼图
-    pie: {
-        useMaxWidth: true,
-        fontSize: 14
+    // Neo 现代 - beautiful-mermaid Mono Mode 风（bg/fg 两色派生）
+    neo: {
+        look: 'neo',
+        flowchart: { curve: 'linear' },
+        light: {
+            fontFamily: MERMAID_FONT_NOTION, fontSize: '14px', background: 'transparent',
+            primaryColor: '#ffffff', primaryTextColor: '#262626', primaryBorderColor: '#737373',
+            secondaryColor: '#ffffff', secondaryTextColor: '#404040', secondaryBorderColor: '#b8b8b8',
+            tertiaryColor: '#fafafa', tertiaryTextColor: '#525252', tertiaryBorderColor: '#dcdcdc',
+            lineColor: '#a3a3a3',
+            mainBkg: '#ffffff', secondBkg: '#ffffff', tertiaryBkg: '#fafafa',
+            nodeBorder: '#737373', nodeTextColor: '#262626',
+            clusterBkg: '#ffffff', clusterBorder: '#ececec',
+            titleColor: '#262626', edgeLabelBackground: '#ffffff',
+            actorBkg: '#ffffff', actorBorder: '#737373', actorTextColor: '#262626',
+            actorLineColor: '#dcdcdc', signalColor: '#737373', signalTextColor: '#262626',
+            labelBoxBkgColor: '#ffffff', labelBoxBorderColor: '#b8b8b8', labelTextColor: '#404040',
+            noteBkgColor: '#ffffff', noteTextColor: '#404040', noteBorderColor: '#dcdcdc',
+            altBackground: '#ffffff', classText: '#262626',
+            pie1: '#737373', pie2: '#8e8e8e', pie3: '#525252', pie4: '#a3a3a3',
+            pie5: '#404040', pie6: '#d4d4d4', pie7: '#262626', pie8: '#e5e5e5',
+            pie9: '#5c5c5c', pie10: '#7a7a7a', pie11: '#9c9c9c', pie12: '#bdbdbd',
+            pieTitleTextColor: '#262626', pieSectionTextColor: '#ffffff',
+            pieLegendTextColor: '#525252', pieStrokeColor: '#ffffff', pieOuterStrokeColor: '#737373',
+            sectionBkgColor: '#ffffff', altSectionBkgColor: '#fafafa', gridColor: '#ececec',
+            taskBkgColor: '#737373', taskTextColor: '#ffffff',
+            taskTextDarkColor: '#262626', taskTextOutsideColor: '#262626',
+            git0: '#737373', git1: '#525252', git2: '#8e8e8e', git3: '#b0b0b0',
+            git4: '#404040', git5: '#9c9c9c', git6: '#d4d4d4', git7: '#262626'
+        },
+        dark: {
+            fontFamily: MERMAID_FONT_NOTION, fontSize: '14px', darkMode: true, background: 'transparent',
+            primaryColor: '#0a0a0a', primaryTextColor: '#fafafa', primaryBorderColor: '#fafafa',
+            secondaryColor: '#171717', secondaryTextColor: '#e5e5e5', secondaryBorderColor: '#a3a3a3',
+            tertiaryColor: '#262626', tertiaryTextColor: '#d4d4d4', tertiaryBorderColor: '#737373',
+            lineColor: '#737373',
+            mainBkg: '#0a0a0a', secondBkg: '#171717', tertiaryBkg: '#262626',
+            nodeBorder: '#fafafa', nodeTextColor: '#fafafa',
+            clusterBkg: '#171717', clusterBorder: '#404040',
+            titleColor: '#fafafa', edgeLabelBackground: '#0a0a0a',
+            actorBkg: '#0a0a0a', actorBorder: '#fafafa', actorTextColor: '#fafafa',
+            actorLineColor: '#525252', signalColor: '#e5e5e5', signalTextColor: '#fafafa',
+            labelBoxBkgColor: '#171717', labelBoxBorderColor: '#a3a3a3', labelTextColor: '#e5e5e5',
+            noteBkgColor: '#171717', noteTextColor: '#e5e5e5', noteBorderColor: '#525252',
+            altBackground: '#171717', classText: '#fafafa',
+            pie1: '#fafafa', pie2: '#e5e5e5', pie3: '#d4d4d4', pie4: '#a3a3a3',
+            pie5: '#737373', pie6: '#525252', pie7: '#404040', pie8: '#262626',
+            pie9: '#f5f5f5', pie10: '#d6d3d1', pie11: '#a8a29e', pie12: '#57534e',
+            pieTitleTextColor: '#fafafa', pieSectionTextColor: '#0a0a0a',
+            pieLegendTextColor: '#d4d4d4', pieStrokeColor: '#0a0a0a', pieOuterStrokeColor: '#fafafa',
+            sectionBkgColor: '#171717', altSectionBkgColor: '#262626', gridColor: '#404040',
+            taskBkgColor: '#fafafa', taskTextColor: '#0a0a0a',
+            taskTextDarkColor: '#fafafa', taskTextOutsideColor: '#fafafa',
+            git0: '#fafafa', git1: '#d4d4d4', git2: '#a3a3a3', git3: '#737373',
+            git4: '#e5e5e5', git5: '#525252', git6: '#404040', git7: '#262626'
+        }
     },
-    // 旅程图
-    journey: {
-        useMaxWidth: true,
-        fontSize: 14
+    // 手绘草图 - 清冷蓝青调
+    sketch: {
+        look: 'handDrawn',
+        flowchart: { curve: 'basis' },
+        light: {
+            fontFamily: MERMAID_FONT_HANDDRAWN, fontSize: '15px', background: 'transparent',
+            primaryColor: '#f0f9ff', primaryTextColor: '#0c4a6e', primaryBorderColor: '#0369a1',
+            secondaryColor: '#ecfeff', secondaryTextColor: '#155e75', secondaryBorderColor: '#0e7490',
+            tertiaryColor: '#eef2ff', tertiaryTextColor: '#312e81', tertiaryBorderColor: '#4338ca',
+            lineColor: '#94a3b8',
+            mainBkg: '#f0f9ff', secondBkg: '#ecfeff', tertiaryBkg: '#eef2ff',
+            nodeBorder: '#0369a1', nodeTextColor: '#0c4a6e',
+            clusterBkg: '#fafcff', clusterBorder: '#bae6fd',
+            titleColor: '#0c4a6e', edgeLabelBackground: '#ffffff',
+            actorBkg: '#f0f9ff', actorBorder: '#0369a1', actorTextColor: '#0c4a6e',
+            actorLineColor: '#cbd5e1', signalColor: '#475569', signalTextColor: '#0c4a6e',
+            labelBoxBkgColor: '#ecfeff', labelBoxBorderColor: '#0e7490', labelTextColor: '#155e75',
+            noteBkgColor: '#f0fbff', noteTextColor: '#0c4a6e', noteBorderColor: '#7dd3fc',
+            altBackground: '#fafcff', classText: '#0c4a6e',
+            pie1: '#0284c7', pie2: '#0891b2', pie3: '#4f46e5', pie4: '#0d9488',
+            pie5: '#3b82f6', pie6: '#06b6d4', pie7: '#6366f1', pie8: '#14b8a6',
+            pie9: '#0ea5e9', pie10: '#22d3ee', pie11: '#818cf8', pie12: '#2dd4bf',
+            pieTitleTextColor: '#0c4a6e', pieSectionTextColor: '#ffffff',
+            pieLegendTextColor: '#475569', pieStrokeColor: '#fafcff', pieOuterStrokeColor: '#0369a1',
+            sectionBkgColor: '#f0f9ff', altSectionBkgColor: '#ecfeff', gridColor: '#e0f2fe',
+            taskBkgColor: '#0369a1', taskTextColor: '#f0f9ff',
+            git0: '#0284c7', git1: '#0891b2', git2: '#4f46e5', git3: '#0d9488',
+            git4: '#3b82f6', git5: '#06b6d4', git6: '#6366f1', git7: '#14b8a6'
+        },
+        dark: {
+            fontFamily: MERMAID_FONT_HANDDRAWN, fontSize: '15px', darkMode: true, background: 'transparent',
+            primaryColor: '#0c4a6e', primaryTextColor: '#e0f2fe', primaryBorderColor: '#7dd3fc',
+            secondaryColor: '#164e63', secondaryTextColor: '#cffafe', secondaryBorderColor: '#67e8f9',
+            tertiaryColor: '#1e1b4b', tertiaryTextColor: '#e0e7ff', tertiaryBorderColor: '#a5b4fc',
+            lineColor: '#94a3b8',
+            mainBkg: '#0c4a6e', secondBkg: '#164e63', tertiaryBkg: '#1e1b4b',
+            nodeBorder: '#7dd3fc', nodeTextColor: '#e0f2fe',
+            clusterBkg: '#082f49', clusterBorder: '#0369a1',
+            titleColor: '#e0f2fe', edgeLabelBackground: '#082f49',
+            actorBkg: '#0c4a6e', actorBorder: '#7dd3fc', actorTextColor: '#e0f2fe',
+            actorLineColor: '#475569', signalColor: '#cbd5e1', signalTextColor: '#e0f2fe',
+            labelBoxBkgColor: '#164e63', labelBoxBorderColor: '#67e8f9', labelTextColor: '#cffafe',
+            noteBkgColor: '#082f49', noteTextColor: '#bae6fd', noteBorderColor: '#0ea5e9',
+            altBackground: '#0c4a6e', classText: '#e0f2fe',
+            pie1: '#7dd3fc', pie2: '#67e8f9', pie3: '#a5b4fc', pie4: '#5eead4',
+            pie5: '#60a5fa', pie6: '#22d3ee', pie7: '#818cf8', pie8: '#2dd4bf',
+            pie9: '#38bdf8', pie10: '#06b6d4', pie11: '#6366f1', pie12: '#14b8a6',
+            pieTitleTextColor: '#e0f2fe', pieSectionTextColor: '#082f49',
+            pieLegendTextColor: '#bae6fd', pieStrokeColor: '#082f49', pieOuterStrokeColor: '#7dd3fc',
+            sectionBkgColor: '#0c4a6e', altSectionBkgColor: '#164e63', gridColor: '#0369a1',
+            taskBkgColor: '#7dd3fc', taskTextColor: '#082f49',
+            git0: '#7dd3fc', git1: '#67e8f9', git2: '#a5b4fc', git3: '#5eead4',
+            git4: '#60a5fa', git5: '#22d3ee', git6: '#818cf8', git7: '#2dd4bf'
+        }
     },
-    // Git图
-    gitGraph: {
-        useMaxWidth: true,
-        fontSize: 14
+    // 森林绿 - 自然清新
+    forest: {
+        look: 'classic',
+        flowchart: { curve: 'basis' },
+        light: {
+            fontFamily: MERMAID_FONT_DEFAULT, fontSize: '14px', background: 'transparent',
+            primaryColor: '#f0fdf4', primaryTextColor: '#14532d', primaryBorderColor: '#15803d',
+            secondaryColor: '#fefce8', secondaryTextColor: '#713f12', secondaryBorderColor: '#ca8a04',
+            tertiaryColor: '#ecfeff', tertiaryTextColor: '#155e75', tertiaryBorderColor: '#0e7490',
+            lineColor: '#86efac',
+            mainBkg: '#f0fdf4', secondBkg: '#fefce8', tertiaryBkg: '#ecfeff',
+            nodeBorder: '#15803d', nodeTextColor: '#14532d',
+            clusterBkg: '#fafffb', clusterBorder: '#bbf7d0',
+            titleColor: '#14532d', edgeLabelBackground: '#ffffff',
+            actorBkg: '#f0fdf4', actorBorder: '#15803d', actorTextColor: '#14532d',
+            actorLineColor: '#bbf7d0', signalColor: '#365314', signalTextColor: '#14532d',
+            labelBoxBkgColor: '#fefce8', labelBoxBorderColor: '#ca8a04', labelTextColor: '#713f12',
+            noteBkgColor: '#fefce8', noteTextColor: '#713f12', noteBorderColor: '#fde68a',
+            altBackground: '#fafffb', classText: '#14532d',
+            pie1: '#16a34a', pie2: '#65a30d', pie3: '#0d9488', pie4: '#ca8a04',
+            pie5: '#0891b2', pie6: '#a16207', pie7: '#84cc16', pie8: '#059669',
+            pie9: '#22c55e', pie10: '#eab308', pie11: '#14b8a6', pie12: '#10b981',
+            pieTitleTextColor: '#14532d', pieSectionTextColor: '#ffffff',
+            pieLegendTextColor: '#365314', pieStrokeColor: '#ffffff', pieOuterStrokeColor: '#bbf7d0',
+            sectionBkgColor: '#f0fdf4', altSectionBkgColor: '#fefce8', gridColor: '#dcfce7',
+            taskBkgColor: '#16a34a', taskTextColor: '#ffffff',
+            git0: '#16a34a', git1: '#65a30d', git2: '#0d9488', git3: '#ca8a04',
+            git4: '#0891b2', git5: '#a16207', git6: '#84cc16', git7: '#059669'
+        },
+        dark: {
+            fontFamily: MERMAID_FONT_DEFAULT, fontSize: '14px', darkMode: true, background: 'transparent',
+            primaryColor: '#14352a', primaryTextColor: '#bbf7d0', primaryBorderColor: '#22c55e',
+            secondaryColor: '#3f2e0a', secondaryTextColor: '#fef3c7', secondaryBorderColor: '#eab308',
+            tertiaryColor: '#0e3a3f', tertiaryTextColor: '#a5f3fc', tertiaryBorderColor: '#06b6d4',
+            lineColor: '#86efac',
+            mainBkg: '#14352a', secondBkg: '#3f2e0a', tertiaryBkg: '#0e3a3f',
+            nodeBorder: '#22c55e', nodeTextColor: '#bbf7d0',
+            clusterBkg: '#052e16', clusterBorder: '#15803d',
+            titleColor: '#bbf7d0', edgeLabelBackground: '#052e16',
+            actorBkg: '#14352a', actorBorder: '#22c55e', actorTextColor: '#bbf7d0',
+            actorLineColor: '#365314', signalColor: '#dcfce7', signalTextColor: '#bbf7d0',
+            labelBoxBkgColor: '#3f2e0a', labelBoxBorderColor: '#eab308', labelTextColor: '#fef3c7',
+            noteBkgColor: '#3f2e0a', noteTextColor: '#fef3c7', noteBorderColor: '#facc15',
+            altBackground: '#14352a', classText: '#bbf7d0',
+            pie1: '#4ade80', pie2: '#a3e635', pie3: '#2dd4bf', pie4: '#facc15',
+            pie5: '#22d3ee', pie6: '#fbbf24', pie7: '#84cc16', pie8: '#10b981',
+            pie9: '#34d399', pie10: '#eab308', pie11: '#5eead4', pie12: '#86efac',
+            pieTitleTextColor: '#bbf7d0', pieSectionTextColor: '#052e16',
+            pieLegendTextColor: '#86efac', pieStrokeColor: '#052e16', pieOuterStrokeColor: '#22c55e',
+            sectionBkgColor: '#14352a', altSectionBkgColor: '#3f2e0a', gridColor: '#365314',
+            taskBkgColor: '#22c55e', taskTextColor: '#052e16',
+            git0: '#4ade80', git1: '#a3e635', git2: '#2dd4bf', git3: '#facc15',
+            git4: '#22d3ee', git5: '#fbbf24', git6: '#84cc16', git7: '#10b981'
+        }
     },
-    // 思维导图
-    mindmap: {
-        useMaxWidth: true,
-        padding: 10
+    // 扁平图标风 - 白底 + 彩色语义节点 (fireworks-tech-graph Flat Icon)
+    flat: {
+        look: 'classic',
+        flowchart: { curve: 'basis' },
+        light: {
+            fontFamily: MERMAID_FONT_DEFAULT, fontSize: '14px', background: 'transparent',
+            primaryColor: '#dbeafe', primaryTextColor: '#1e40af', primaryBorderColor: '#2563eb',
+            secondaryColor: '#fed7aa', secondaryTextColor: '#9a3412', secondaryBorderColor: '#f97316',
+            tertiaryColor: '#bbf7d0', tertiaryTextColor: '#166534', tertiaryBorderColor: '#22c55e',
+            lineColor: '#64748b',
+            mainBkg: '#dbeafe', secondBkg: '#fed7aa', tertiaryBkg: '#bbf7d0',
+            nodeBorder: '#2563eb', nodeTextColor: '#1e40af',
+            clusterBkg: '#f9fafb', clusterBorder: '#cbd5e1',
+            titleColor: '#0f172a', edgeLabelBackground: '#ffffff',
+            actorBkg: '#dbeafe', actorBorder: '#2563eb', actorTextColor: '#1e40af',
+            actorLineColor: '#94a3b8', signalColor: '#475569', signalTextColor: '#0f172a',
+            labelBoxBkgColor: '#fed7aa', labelBoxBorderColor: '#f97316', labelTextColor: '#9a3412',
+            noteBkgColor: '#fef3c7', noteTextColor: '#78350f', noteBorderColor: '#f59e0b',
+            altBackground: '#f9fafb', classText: '#0f172a',
+            pie1: '#2563eb', pie2: '#f97316', pie3: '#22c55e', pie4: '#a855f7',
+            pie5: '#ec4899', pie6: '#06b6d4', pie7: '#eab308', pie8: '#ef4444',
+            pie9: '#3b82f6', pie10: '#fb923c', pie11: '#10b981', pie12: '#8b5cf6',
+            pieTitleTextColor: '#0f172a', pieSectionTextColor: '#ffffff',
+            pieLegendTextColor: '#475569', pieStrokeColor: '#ffffff', pieOuterStrokeColor: '#cbd5e1',
+            sectionBkgColor: '#dbeafe', altSectionBkgColor: '#fed7aa', gridColor: '#e5e7eb',
+            taskBkgColor: '#2563eb', taskTextColor: '#ffffff',
+            git0: '#2563eb', git1: '#f97316', git2: '#22c55e', git3: '#a855f7',
+            git4: '#ec4899', git5: '#06b6d4', git6: '#eab308', git7: '#ef4444'
+        },
+        dark: {
+            fontFamily: MERMAID_FONT_DEFAULT, fontSize: '14px', darkMode: true, background: 'transparent',
+            primaryColor: '#1e3a8a', primaryTextColor: '#dbeafe', primaryBorderColor: '#60a5fa',
+            secondaryColor: '#7c2d12', secondaryTextColor: '#fed7aa', secondaryBorderColor: '#fb923c',
+            tertiaryColor: '#14532d', tertiaryTextColor: '#bbf7d0', tertiaryBorderColor: '#4ade80',
+            lineColor: '#94a3b8',
+            mainBkg: '#1e3a8a', secondBkg: '#7c2d12', tertiaryBkg: '#14532d',
+            nodeBorder: '#60a5fa', nodeTextColor: '#dbeafe',
+            clusterBkg: '#0f172a', clusterBorder: '#475569',
+            titleColor: '#f1f5f9', edgeLabelBackground: '#0f172a',
+            actorBkg: '#1e3a8a', actorBorder: '#60a5fa', actorTextColor: '#dbeafe',
+            actorLineColor: '#475569', signalColor: '#cbd5e1', signalTextColor: '#f1f5f9',
+            labelBoxBkgColor: '#7c2d12', labelBoxBorderColor: '#fb923c', labelTextColor: '#fed7aa',
+            noteBkgColor: '#451a03', noteTextColor: '#fde68a', noteBorderColor: '#f59e0b',
+            altBackground: '#0f172a', classText: '#f1f5f9',
+            pie1: '#60a5fa', pie2: '#fb923c', pie3: '#4ade80', pie4: '#c084fc',
+            pie5: '#f472b6', pie6: '#22d3ee', pie7: '#facc15', pie8: '#f87171',
+            pie9: '#93c5fd', pie10: '#fdba74', pie11: '#34d399', pie12: '#a78bfa',
+            pieTitleTextColor: '#f1f5f9', pieSectionTextColor: '#0f172a',
+            pieLegendTextColor: '#cbd5e1', pieStrokeColor: '#0f172a', pieOuterStrokeColor: '#475569',
+            sectionBkgColor: '#1e3a8a', altSectionBkgColor: '#7c2d12', gridColor: '#334155',
+            taskBkgColor: '#60a5fa', taskTextColor: '#0f172a',
+            git0: '#60a5fa', git1: '#fb923c', git2: '#4ade80', git3: '#c084fc',
+            git4: '#f472b6', git5: '#22d3ee', git6: '#facc15', git7: '#f87171'
+        }
     },
-    // 时间线
-    timeline: {
-        useMaxWidth: true,
-        padding: 10
-    },
-    // 桑基图
-    sankey: {
-        useMaxWidth: true
-    },
-    // XY图表
-    xyChart: {
-        useMaxWidth: true
-    },
-    // 象限图
-    quadrantChart: {
-        useMaxWidth: true
-    },
-    // 需求图
-    requirement: {
-        useMaxWidth: true,
-        fontSize: 14
-    },
-    // 块图
-    block: {
-        useMaxWidth: true,
-        padding: 10
-    },
-    // 数据包图
-    packet: {
-        useMaxWidth: true,
-        padding: 10
-    },
-    // 架构图
-    architecture: {
-        useMaxWidth: true,
-        padding: 10
-    },
-    // 看板
-    kanban: {
-        useMaxWidth: true,
-        padding: 10
+    // Notion 极简风 - 白底 + 浅灰边框 + Notion 蓝单一强调色 (fireworks-tech-graph Notion Clean)
+    notion: {
+        look: 'classic',
+        flowchart: { curve: 'basis' },
+        light: {
+            fontFamily: MERMAID_FONT_NOTION, fontSize: '14px', background: 'transparent',
+            primaryColor: '#ffffff', primaryTextColor: '#37352f', primaryBorderColor: '#d3d1cb',
+            secondaryColor: '#fcfbf9', secondaryTextColor: '#37352f', secondaryBorderColor: '#b8b4ab',
+            tertiaryColor: '#f4faff', tertiaryTextColor: '#1f5482', tertiaryBorderColor: '#2383e2',
+            lineColor: '#9b9a97',
+            mainBkg: '#ffffff', secondBkg: '#fcfbf9', tertiaryBkg: '#f4faff',
+            nodeBorder: '#d3d1cb', nodeTextColor: '#37352f',
+            clusterBkg: '#ffffff', clusterBorder: '#e9e9e7',
+            titleColor: '#37352f', edgeLabelBackground: '#ffffff',
+            actorBkg: '#ffffff', actorBorder: '#d3d1cb', actorTextColor: '#37352f',
+            actorLineColor: '#d3d1cb', signalColor: '#787774', signalTextColor: '#37352f',
+            labelBoxBkgColor: '#fcfbf9', labelBoxBorderColor: '#b8b4ab', labelTextColor: '#37352f',
+            noteBkgColor: '#fdf9ec', noteTextColor: '#65492b', noteBorderColor: '#e6cfa1',
+            altBackground: '#fcfbf9', classText: '#37352f',
+            pie1: '#2383e2', pie2: '#787774', pie3: '#d9b884', pie4: '#9b9a97',
+            pie5: '#37352f', pie6: '#a39bca', pie7: '#cb912f', pie8: '#5b97bd',
+            pie9: '#aab59f', pie10: '#c4a3a3', pie11: '#6f6e69', pie12: '#dabbb1',
+            pieTitleTextColor: '#37352f', pieSectionTextColor: '#ffffff',
+            pieLegendTextColor: '#787774', pieStrokeColor: '#ffffff', pieOuterStrokeColor: '#d3d1cb',
+            sectionBkgColor: '#fcfbf9', altSectionBkgColor: '#ffffff', gridColor: '#e9e9e7',
+            taskBkgColor: '#2383e2', taskTextColor: '#ffffff',
+            git0: '#2383e2', git1: '#787774', git2: '#d9b884', git3: '#a39bca',
+            git4: '#cb912f', git5: '#5b97bd', git6: '#aab59f', git7: '#c4a3a3'
+        },
+        dark: {
+            fontFamily: MERMAID_FONT_NOTION, fontSize: '14px', darkMode: true, background: 'transparent',
+            primaryColor: '#2f3437', primaryTextColor: '#ebeae8', primaryBorderColor: '#454b4e',
+            secondaryColor: '#373c3f', secondaryTextColor: '#ebeae8', secondaryBorderColor: '#4f5559',
+            tertiaryColor: '#1c3144', tertiaryTextColor: '#a4d4f5', tertiaryBorderColor: '#529cca',
+            lineColor: '#6e7173',
+            mainBkg: '#2f3437', secondBkg: '#373c3f', tertiaryBkg: '#1c3144',
+            nodeBorder: '#454b4e', nodeTextColor: '#ebeae8',
+            clusterBkg: '#25292c', clusterBorder: '#454b4e',
+            titleColor: '#ebeae8', edgeLabelBackground: '#25292c',
+            actorBkg: '#2f3437', actorBorder: '#454b4e', actorTextColor: '#ebeae8',
+            actorLineColor: '#4f5559', signalColor: '#bcb9b3', signalTextColor: '#ebeae8',
+            labelBoxBkgColor: '#373c3f', labelBoxBorderColor: '#4f5559', labelTextColor: '#ebeae8',
+            noteBkgColor: '#3a3328', noteTextColor: '#f3d9a4', noteBorderColor: '#a78c5b',
+            altBackground: '#25292c', classText: '#ebeae8',
+            pie1: '#529cca', pie2: '#bcb9b3', pie3: '#d9b884', pie4: '#a39bca',
+            pie5: '#ebeae8', pie6: '#9bd1e5', pie7: '#e8b86e', pie8: '#7fb1d4',
+            pie9: '#b9c4ac', pie10: '#d4a8a8', pie11: '#9fa19c', pie12: '#deccc4',
+            pieTitleTextColor: '#ebeae8', pieSectionTextColor: '#25292c',
+            pieLegendTextColor: '#bcb9b3', pieStrokeColor: '#25292c', pieOuterStrokeColor: '#454b4e',
+            sectionBkgColor: '#2f3437', altSectionBkgColor: '#373c3f', gridColor: '#454b4e',
+            taskBkgColor: '#529cca', taskTextColor: '#25292c',
+            git0: '#529cca', git1: '#bcb9b3', git2: '#d9b884', git3: '#a39bca',
+            git4: '#e8b86e', git5: '#7fb1d4', git6: '#b9c4ac', git7: '#d4a8a8'
+        }
     }
 };
+
+var MERMAID_STYLE_DEFAULT = 'classic';
+var MERMAID_STYLE_KEY = 'mermaidStyle';
+
+function getCurrentMermaidStyle() {
+    try {
+        var saved = localStorage.getItem(MERMAID_STYLE_KEY);
+        if (saved && MERMAID_STYLE_PRESETS[saved]) return saved;
+    } catch (e) {}
+    return MERMAID_STYLE_DEFAULT;
+}
+
+function buildMermaidConfig() {
+    var isDark = document.body && document.body.classList.contains('dark-mode');
+    var styleKey = getCurrentMermaidStyle();
+    var preset = MERMAID_STYLE_PRESETS[styleKey] || MERMAID_STYLE_PRESETS[MERMAID_STYLE_DEFAULT];
+    var themeVars = isDark ? preset.dark : preset.light;
+    var fontFamily = themeVars.fontFamily || MERMAID_FONT_DEFAULT;
+    var flowCurve = (preset.flowchart && preset.flowchart.curve) || 'basis';
+    return {
+        startOnLoad: false,
+        theme: 'base',
+        themeVariables: themeVars,
+        look: preset.look || 'classic',
+        securityLevel: 'loose',
+        suppressErrorRendering: false,
+        fontFamily: fontFamily,
+        logLevel: 'error',
+        // 流程图
+        flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            curve: flowCurve,
+            padding: 18,
+            nodeSpacing: 55,
+            rankSpacing: 60,
+            diagramPadding: 12
+        },
+    // 时序图
+        sequence: {
+            useMaxWidth: true,
+            showSequenceNumbers: false,
+            actorFontSize: 14,
+            actorFontWeight: 500,
+            noteFontSize: 13,
+            noteFontWeight: 400,
+            messageFontSize: 13,
+            messageFontWeight: 400,
+            wrap: true,
+            width: 160,
+            boxMargin: 10,
+            mirrorActors: true
+        },
+        // 类图
+        class: {
+            useMaxWidth: true,
+            fontSize: 14
+        },
+        // 状态图
+        state: {
+            useMaxWidth: true,
+            fontSize: 14
+        },
+        // ER图
+        er: {
+            useMaxWidth: true,
+            fontSize: 14
+        },
+        // 甘特图
+        gantt: {
+            useMaxWidth: true,
+            titleTopMargin: 25,
+            barHeight: 22,
+            barGap: 6,
+            topPadding: 50,
+            leftPadding: 85,
+            gridLineStartPadding: 35,
+            fontSize: 13,
+            numberSectionStyles: 4
+        },
+        // 饼图
+        pie: {
+            useMaxWidth: true,
+            textPosition: 0.7
+        },
+        // 旅程图
+        journey: {
+            useMaxWidth: true
+        },
+        // Git图
+        gitGraph: {
+            useMaxWidth: true,
+            mainBranchName: 'main',
+            showCommitLabel: true
+        },
+        // 思维导图
+        mindmap: {
+            useMaxWidth: true,
+            padding: 12
+        },
+        // 时间线
+        timeline: {
+            useMaxWidth: true,
+            padding: 12
+        },
+        // 桑基图
+        sankey: {
+            useMaxWidth: true
+        },
+        // XY图表
+        xyChart: {
+            useMaxWidth: true
+        },
+        // 象限图
+        quadrantChart: {
+            useMaxWidth: true
+        },
+        // 需求图
+        requirement: {
+            useMaxWidth: true,
+            fontSize: 14
+        },
+        // 块图
+        block: {
+            useMaxWidth: true,
+            padding: 12
+        },
+        // 数据包图
+        packet: {
+            useMaxWidth: true,
+            padding: 12
+        },
+        // 架构图
+        architecture: {
+            useMaxWidth: true,
+            padding: 12
+        },
+        // 看板
+        kanban: {
+            useMaxWidth: true,
+            padding: 12
+        }
+    };
+}
+
+// 全局 MERMAID_CONFIG，调用者可随时读取最新主题配置
+var MERMAID_CONFIG = buildMermaidConfig();
+window.MERMAID_CONFIG = MERMAID_CONFIG;
+window.buildMermaidConfig = buildMermaidConfig;
 
 // 初始化Mermaid
 function initializeMermaid() {

@@ -1182,15 +1182,108 @@ body.dark-mode .file-item.search-match {
 
 /* Mermaid 图表样式 */
 .mermaid-container {
-    margin: 16px 0;
-    padding: 16px;
-    background-color: #ffffff;
+    margin: 20px 0;
+    padding: 20px 18px;
+    background:
+        linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     position: relative;
     overflow: auto;
     user-select: text;
     -webkit-user-select: text;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.04),
+        0 2px 8px rgba(15, 23, 42, 0.06);
+    transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+}
+
+.mermaid-container:hover {
+    border-color: rgba(59, 130, 246, 0.35);
+    box-shadow:
+        0 2px 4px rgba(15, 23, 42, 0.06),
+        0 8px 24px rgba(15, 23, 42, 0.10);
+}
+
+.mermaid-container .mermaid {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.mermaid-container svg {
+    max-width: 100%;
+    height: auto;
+    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.06));
+    transition: filter 0.2s ease;
+}
+
+/* 节点 hover 轻微高亮 */
+.mermaid-container .node:hover rect,
+.mermaid-container .node:hover circle,
+.mermaid-container .node:hover ellipse,
+.mermaid-container .node:hover polygon,
+.mermaid-container .node:hover path {
+    filter: brightness(0.96) saturate(1.05);
+    transition: filter 0.15s ease;
+}
+
+/* 连线描边变细、端点圆滑 */
+.mermaid-container .edgePath path,
+.mermaid-container .flowchart-link {
+    stroke-width: 1.6px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* 节点边框 */
+.mermaid-container .node rect,
+.mermaid-container .node circle,
+.mermaid-container .node ellipse,
+.mermaid-container .node polygon,
+.mermaid-container .node path {
+    stroke-width: 1.4px;
+}
+
+/* 节点文本防锯齿 */
+.mermaid-container svg text {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* 深色主题适配 */
+body.dark-mode .mermaid-container {
+    background:
+        linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-color: #334155;
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.25),
+        0 2px 8px rgba(0, 0, 0, 0.30);
+}
+
+body.dark-mode .mermaid-container:hover {
+    border-color: rgba(96, 165, 250, 0.45);
+    box-shadow:
+        0 4px 12px rgba(0, 0, 0, 0.35),
+        0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+body.dark-mode .mermaid-container svg {
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+/* 蓝色主题适配 */
+body.blue-mode .mermaid-container {
+    background:
+        linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+    border-color: #bfdbfe;
+}
+
+/* 粉色主题适配 */
+body.pink-mode .mermaid-container {
+    background:
+        linear-gradient(135deg, #ffffff 0%, #fdf2f8 100%);
+    border-color: #fbcfe8;
 }
 
 .mermaid-actions {
@@ -2068,4 +2161,140 @@ body.editing-source #sourceCloseBtn {
     opacity: 0.45;
     cursor: not-allowed;
 }
+
+/* ===== Mermaid 风格选择卡片 ===== */
+.mermaid-style-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.mermaid-style-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 8px 6px;
+    border-radius: var(--radius-md);
+    border: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.mermaid-style-option:hover {
+    background: var(--hover-bg);
+}
+
+.mermaid-style-option.active {
+    border-color: var(--primary-color);
+    background: var(--hover-bg);
+}
+
+.mermaid-style-option span {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-color);
+    text-align: center;
+}
+
+.ms-preview {
+    position: relative;
+    width: 100%;
+    height: 50px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 6px;
+}
+
+.ms-preview .ms-node {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1.5px solid;
+    flex-shrink: 0;
+    z-index: 2;
+}
+
+.ms-preview .ms-edge {
+    flex: 1;
+    height: 1.5px;
+    margin: 0 -2px;
+    z-index: 1;
+}
+
+/* 经典蓝 */
+.ms-preview-classic {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+}
+.ms-preview-classic .ms-n1 { background: #dbeafe; border-color: #3b82f6; }
+.ms-preview-classic .ms-n2 { background: #fef3c7; border-color: #f59e0b; }
+.ms-preview-classic .ms-n3 { background: #dcfce7; border-color: #10b981; }
+.ms-preview-classic .ms-edge { background: #64748b; }
+
+/* Neo 现代 - beautiful-mermaid Mono Mode 风 */
+.ms-preview-neo {
+    background: #ffffff;
+}
+.ms-preview-neo .ms-node {
+    border-radius: 6px;
+    border-width: 1.5px;
+}
+.ms-preview-neo .ms-n1 { background: #ffffff; border-color: #737373; }
+.ms-preview-neo .ms-n2 { background: #ffffff; border-color: #b8b8b8; }
+.ms-preview-neo .ms-n3 { background: #fafafa; border-color: #dcdcdc; }
+.ms-preview-neo .ms-edge { background: #b8b8b8; height: 1px; }
+
+/* 手绘草图 - 清冷蓝青调 */
+.ms-preview-sketch {
+    background: linear-gradient(135deg, #fafdff 0%, #f0f9ff 100%);
+}
+.ms-preview-sketch .ms-node {
+    border-style: dashed;
+    border-radius: 4px 6px 5px 7px / 6px 4px 7px 5px;
+    transform: rotate(-2deg);
+}
+.ms-preview-sketch .ms-n1 { background: #f0f9ff; border-color: #0369a1; }
+.ms-preview-sketch .ms-n2 { background: #ecfeff; border-color: #0e7490; transform: rotate(1.5deg); }
+.ms-preview-sketch .ms-n3 { background: #eef2ff; border-color: #4338ca; transform: rotate(-1deg); }
+.ms-preview-sketch .ms-edge { background: #94a3b8; height: 2px; }
+
+/* 森林绿 */
+.ms-preview-forest {
+    background: linear-gradient(135deg, #ffffff 0%, #fafffb 100%);
+}
+.ms-preview-forest .ms-n1 { background: #f0fdf4; border-color: #15803d; }
+.ms-preview-forest .ms-n2 { background: #fefce8; border-color: #ca8a04; }
+.ms-preview-forest .ms-n3 { background: #ecfeff; border-color: #0e7490; }
+.ms-preview-forest .ms-edge { background: #86efac; }
+
+/* 扁平图标风 - 白底 + 彩色语义节点 (Flat Icon) */
+.ms-preview-flat {
+    background: #ffffff;
+}
+.ms-preview-flat .ms-node {
+    border-radius: 8px;
+    border-width: 2px;
+}
+.ms-preview-flat .ms-n1 { background: #dbeafe; border-color: #2563eb; }
+.ms-preview-flat .ms-n2 { background: #fed7aa; border-color: #f97316; }
+.ms-preview-flat .ms-n3 { background: #bbf7d0; border-color: #22c55e; }
+.ms-preview-flat .ms-edge { background: #94a3b8; }
+
+/* Notion 极简风 - 白底 + 浅灰边框 + 单一蓝强调色 (Notion Clean) */
+.ms-preview-notion {
+    background: #ffffff;
+}
+.ms-preview-notion .ms-node {
+    border-radius: 4px;
+    border-width: 1px;
+}
+.ms-preview-notion .ms-n1 { background: #ffffff; border-color: #d3d1cb; }
+.ms-preview-notion .ms-n2 { background: #fcfbf9; border-color: #b8b4ab; }
+.ms-preview-notion .ms-n3 { background: #f4faff; border-color: #2383e2; }
+.ms-preview-notion .ms-edge { background: #9b9a97; height: 1px; }
 
