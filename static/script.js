@@ -2831,59 +2831,80 @@ var MERMAID_STYLE_PRESETS = {
             git4: '#e5e5e5', git5: '#525252', git6: '#404040', git7: '#262626'
         }
     },
-    // 手绘草图 - 清冷蓝青调
+    // 手绘草图 - Excalidraw 风格（Open Colors 调色板，奶白底+墨黑文字+多色相节点）
     sketch: {
         look: 'handDrawn',
         flowchart: { curve: 'basis' },
         light: {
             fontFamily: MERMAID_FONT_HANDDRAWN, fontSize: '15px', background: 'transparent',
-            primaryColor: '#f0f9ff', primaryTextColor: '#0c4a6e', primaryBorderColor: '#0369a1',
-            secondaryColor: '#ecfeff', secondaryTextColor: '#155e75', secondaryBorderColor: '#0e7490',
-            tertiaryColor: '#eef2ff', tertiaryTextColor: '#312e81', tertiaryBorderColor: '#4338ca',
-            lineColor: '#94a3b8',
-            mainBkg: '#f0f9ff', secondBkg: '#ecfeff', tertiaryBkg: '#eef2ff',
-            nodeBorder: '#0369a1', nodeTextColor: '#0c4a6e',
-            clusterBkg: '#fafcff', clusterBorder: '#bae6fd',
-            titleColor: '#0c4a6e', edgeLabelBackground: '#ffffff',
-            actorBkg: '#f0f9ff', actorBorder: '#0369a1', actorTextColor: '#0c4a6e',
-            actorLineColor: '#cbd5e1', signalColor: '#475569', signalTextColor: '#0c4a6e',
-            labelBoxBkgColor: '#ecfeff', labelBoxBorderColor: '#0e7490', labelTextColor: '#155e75',
-            noteBkgColor: '#f0fbff', noteTextColor: '#0c4a6e', noteBorderColor: '#7dd3fc',
-            altBackground: '#fafcff', classText: '#0c4a6e',
-            pie1: '#0284c7', pie2: '#0891b2', pie3: '#4f46e5', pie4: '#0d9488',
-            pie5: '#3b82f6', pie6: '#06b6d4', pie7: '#6366f1', pie8: '#14b8a6',
-            pie9: '#0ea5e9', pie10: '#22d3ee', pie11: '#818cf8', pie12: '#2dd4bf',
-            pieTitleTextColor: '#0c4a6e', pieSectionTextColor: '#ffffff',
-            pieLegendTextColor: '#475569', pieStrokeColor: '#fafcff', pieOuterStrokeColor: '#0369a1',
-            sectionBkgColor: '#f0f9ff', altSectionBkgColor: '#ecfeff', gridColor: '#e0f2fe',
-            taskBkgColor: '#0369a1', taskTextColor: '#f0f9ff',
-            git0: '#0284c7', git1: '#0891b2', git2: '#4f46e5', git3: '#0d9488',
-            git4: '#3b82f6', git5: '#06b6d4', git6: '#6366f1', git7: '#14b8a6'
+            // 节点底色用 Open Colors 第 0 级（最浅，避免 hatch 斜纯加深）、描边用第 7 级、文字一律近纯黑 #0a0a0a
+            primaryColor: '#e7f5ff', primaryTextColor: '#0a0a0a', primaryBorderColor: '#1c7ed6',
+            secondaryColor: '#e3fafc', secondaryTextColor: '#0a0a0a', secondaryBorderColor: '#1098ad',
+            tertiaryColor: '#edf2ff', tertiaryTextColor: '#0a0a0a', tertiaryBorderColor: '#4263eb',
+            lineColor: '#343a40',
+            mainBkg: '#e7f5ff', secondBkg: '#e3fafc', tertiaryBkg: '#edf2ff',
+            nodeBorder: '#1c7ed6', nodeTextColor: '#0a0a0a',
+            clusterBkg: '#fdfcf7', clusterBorder: '#adb5bd',
+            titleColor: '#0a0a0a', edgeLabelBackground: '#fdfcf7',
+            actorBkg: '#e7f5ff', actorBorder: '#1c7ed6', actorTextColor: '#0a0a0a',
+            actorLineColor: '#495057', signalColor: '#0a0a0a', signalTextColor: '#0a0a0a',
+            labelBoxBkgColor: '#fff9db', labelBoxBorderColor: '#f59f00', labelTextColor: '#0a0a0a',
+            noteBkgColor: '#fff9db', noteTextColor: '#0a0a0a', noteBorderColor: '#fab005',
+            altBackground: '#fdfcf7', classText: '#0a0a0a',
+            // 饼图：Open Colors 多色相中等饱和度
+            pie1: '#4dabf7', pie2: '#3bc9db', pie3: '#5c7cfa', pie4: '#38d9a9',
+            pie5: '#ffd43b', pie6: '#ff922b', pie7: '#ff6b6b', pie8: '#cc5de8',
+            pie9: '#a9e34b', pie10: '#74c0fc', pie11: '#ff8787', pie12: '#9775fa',
+            pieTitleTextColor: '#0a0a0a', pieSectionTextColor: '#0a0a0a',
+            pieLegendTextColor: '#343a40', pieStrokeColor: '#fdfcf7', pieOuterStrokeColor: '#495057',
+            sectionBkgColor: '#e7f5ff', altSectionBkgColor: '#e3fafc', gridColor: '#dee2e6',
+            taskBkgColor: '#1c7ed6', taskTextColor: '#fdfcf7',
+            git0: '#1c7ed6', git1: '#1098ad', git2: '#4263eb', git3: '#0ca678',
+            git4: '#339af0', git5: '#22b8cf', git6: '#5c7cfa', git7: '#12b886',
+            shapeColors: {
+                rect:      { fill: '#e7f5ff', stroke: '#1c7ed6', text: '#0a0a0a' }, // blue-0
+                rounded:   { fill: '#e6fcf5', stroke: '#0ca678', text: '#0a0a0a' }, // teal-0
+                diamond:   { fill: '#f3f0ff', stroke: '#7048e8', text: '#0a0a0a' }, // violet-0
+                hexagon:   { fill: '#e3fafc', stroke: '#1098ad', text: '#0a0a0a' }, // cyan-0
+                cylinder:  { fill: '#edf2ff', stroke: '#4263eb', text: '#0a0a0a' }, // indigo-0
+                circle:    { fill: '#fff9db', stroke: '#f59f00', text: '#0a0a0a' }, // yellow-0
+                ellipse:   { fill: '#fff5f5', stroke: '#fa5252', text: '#0a0a0a' }  // red-0
+            }
         },
         dark: {
             fontFamily: MERMAID_FONT_HANDDRAWN, fontSize: '15px', darkMode: true, background: 'transparent',
-            primaryColor: '#0c4a6e', primaryTextColor: '#e0f2fe', primaryBorderColor: '#7dd3fc',
-            secondaryColor: '#164e63', secondaryTextColor: '#cffafe', secondaryBorderColor: '#67e8f9',
-            tertiaryColor: '#1e1b4b', tertiaryTextColor: '#e0e7ff', tertiaryBorderColor: '#a5b4fc',
-            lineColor: '#94a3b8',
-            mainBkg: '#0c4a6e', secondBkg: '#164e63', tertiaryBkg: '#1e1b4b',
-            nodeBorder: '#7dd3fc', nodeTextColor: '#e0f2fe',
-            clusterBkg: '#082f49', clusterBorder: '#0369a1',
-            titleColor: '#e0f2fe', edgeLabelBackground: '#082f49',
-            actorBkg: '#0c4a6e', actorBorder: '#7dd3fc', actorTextColor: '#e0f2fe',
-            actorLineColor: '#475569', signalColor: '#cbd5e1', signalTextColor: '#e0f2fe',
-            labelBoxBkgColor: '#164e63', labelBoxBorderColor: '#67e8f9', labelTextColor: '#cffafe',
-            noteBkgColor: '#082f49', noteTextColor: '#bae6fd', noteBorderColor: '#0ea5e9',
-            altBackground: '#0c4a6e', classText: '#e0f2fe',
-            pie1: '#7dd3fc', pie2: '#67e8f9', pie3: '#a5b4fc', pie4: '#5eead4',
-            pie5: '#60a5fa', pie6: '#22d3ee', pie7: '#818cf8', pie8: '#2dd4bf',
-            pie9: '#38bdf8', pie10: '#06b6d4', pie11: '#6366f1', pie12: '#14b8a6',
-            pieTitleTextColor: '#e0f2fe', pieSectionTextColor: '#082f49',
-            pieLegendTextColor: '#bae6fd', pieStrokeColor: '#082f49', pieOuterStrokeColor: '#7dd3fc',
-            sectionBkgColor: '#0c4a6e', altSectionBkgColor: '#164e63', gridColor: '#0369a1',
-            taskBkgColor: '#7dd3fc', taskTextColor: '#082f49',
-            git0: '#7dd3fc', git1: '#67e8f9', git2: '#a5b4fc', git3: '#5eead4',
-            git4: '#60a5fa', git5: '#22d3ee', git6: '#818cf8', git7: '#2dd4bf'
+            // 深色：节点用中性深底，文字一律 gray-0 近白
+            primaryColor: '#1971c2', primaryTextColor: '#f8f9fa', primaryBorderColor: '#74c0fc',
+            secondaryColor: '#0c8599', secondaryTextColor: '#f8f9fa', secondaryBorderColor: '#66d9e8',
+            tertiaryColor: '#3b5bdb', tertiaryTextColor: '#f8f9fa', tertiaryBorderColor: '#91a7ff',
+            lineColor: '#adb5bd',
+            mainBkg: '#1971c2', secondBkg: '#0c8599', tertiaryBkg: '#3b5bdb',
+            nodeBorder: '#74c0fc', nodeTextColor: '#f8f9fa',
+            clusterBkg: '#212529', clusterBorder: '#495057',
+            titleColor: '#f8f9fa', edgeLabelBackground: '#212529',
+            actorBkg: '#1971c2', actorBorder: '#74c0fc', actorTextColor: '#f8f9fa',
+            actorLineColor: '#868e96', signalColor: '#dee2e6', signalTextColor: '#f8f9fa',
+            labelBoxBkgColor: '#5c3c00', labelBoxBorderColor: '#fab005', labelTextColor: '#fff3bf',
+            noteBkgColor: '#3d2e00', noteTextColor: '#fff3bf', noteBorderColor: '#fab005',
+            altBackground: '#212529', classText: '#f8f9fa',
+            pie1: '#74c0fc', pie2: '#66d9e8', pie3: '#91a7ff', pie4: '#63e6be',
+            pie5: '#ffd43b', pie6: '#ffa94d', pie7: '#ff8787', pie8: '#da77f2',
+            pie9: '#c0eb75', pie10: '#a5d8ff', pie11: '#ffc9c9', pie12: '#b197fc',
+            pieTitleTextColor: '#f8f9fa', pieSectionTextColor: '#212529',
+            pieLegendTextColor: '#dee2e6', pieStrokeColor: '#212529', pieOuterStrokeColor: '#74c0fc',
+            sectionBkgColor: '#1971c2', altSectionBkgColor: '#0c8599', gridColor: '#495057',
+            taskBkgColor: '#74c0fc', taskTextColor: '#212529',
+            git0: '#74c0fc', git1: '#66d9e8', git2: '#91a7ff', git3: '#63e6be',
+            git4: '#a5d8ff', git5: '#3bc9db', git6: '#748ffc', git7: '#38d9a9',
+            shapeColors: {
+                rect:      { fill: '#1971c2', stroke: '#74c0fc', text: '#f8f9fa' },
+                rounded:   { fill: '#087f5b', stroke: '#63e6be', text: '#f8f9fa' },
+                diamond:   { fill: '#5f3dc4', stroke: '#b197fc', text: '#f8f9fa' },
+                hexagon:   { fill: '#0c8599', stroke: '#66d9e8', text: '#f8f9fa' },
+                cylinder:  { fill: '#3b5bdb', stroke: '#91a7ff', text: '#f8f9fa' },
+                circle:    { fill: '#e67700', stroke: '#ffd43b', text: '#f8f9fa' },
+                ellipse:   { fill: '#c92a2a', stroke: '#ff8787', text: '#f8f9fa' }
+            }
         }
     },
     // 森林绿 - 自然清新
@@ -3103,11 +3124,34 @@ function detectNodeShape(nodeGroup) {
     return 'rect';
 }
 
-// 基于形状语义对 SVG 节点进行彩色映射（仅 flat 风格生效）
+// 从 Mermaid 源码解析节点 ID → 形状类型映射
+// 用于 handDrawn 模式，因 rough.js 将所有形状统一渲染为 <path> 导致 detectNodeShape 失效
+function parseMermaidNodeShapes(mermaidCode) {
+    var map = {};
+    // 支持 A, B1, node-2, Start 等含短横线的节点 ID
+    var regex = /([\w-]+)(\[\[.*?\]\]|\[\(.*?\)\]|\(\(.*?\)\)|\{\{.*?\}\}|\[.*?\]|\(.*?\)|\{.*?\})/g;
+    var match;
+    while ((match = regex.exec(mermaidCode)) !== null) {
+        var id = match[1];
+        // 过滤箭头（--> ===> --o --x 等）
+        if (/^[-=>ox]+$/.test(id)) continue;
+        var brackets = match[2];
+        if (brackets.indexOf('[[') === 0)      map[id] = 'rect';
+        else if (brackets.indexOf('[(') === 0) map[id] = 'cylinder';
+        else if (brackets.indexOf('((') === 0) map[id] = 'circle';
+        else if (brackets.indexOf('{{') === 0) map[id] = 'hexagon';
+        else if (brackets.indexOf('[') === 0)  map[id] = 'rect';
+        else if (brackets.indexOf('(') === 0)  map[id] = 'rounded';
+        else if (brackets.indexOf('{') === 0)  map[id] = 'diamond';
+    }
+    return map;
+}
+
+// 基于形状语义对 SVG 节点进行彩色映射（flat / sketch 风格生效）
 function applyMermaidShapeColors(container) {
     var styleKey = getCurrentMermaidStyle();
-    if (styleKey !== 'flat') return;
-    var preset = MERMAID_STYLE_PRESETS['flat'];
+    if (styleKey !== 'flat' && styleKey !== 'sketch') return;
+    var preset = MERMAID_STYLE_PRESETS[styleKey];
     if (!preset) return;
     var isDark = document.body && document.body.classList.contains('dark-mode');
     var themeVars = isDark ? preset.dark : preset.light;
@@ -3117,29 +3161,114 @@ function applyMermaidShapeColors(container) {
     var svg = container.querySelector('svg');
     if (!svg) return;
 
+    // sketch 风格从源码解析形状（handDrawn 下 rough.js 将全部节点渲染为 <path>）
+    var nodeShapeMap = null;
+    if (styleKey === 'sketch') {
+        var mermaidCode = container.getAttribute('data-mermaid-source') || '';
+        if (mermaidCode) {
+            var parsed = parseMermaidNodeShapes(mermaidCode);
+            // 仅当解析到有效映射时才启用源码路径，否则退回 SVG 检测
+            for (var _k in parsed) { if (parsed.hasOwnProperty(_k)) { nodeShapeMap = parsed; break; } }
+        }
+    }
+
+    // 优先用 g.node；handDrawn 模式下若拿不到，则基于 id 进行包含匹配
+    // 实际 id 形如 mermaid-diagram-XXXX-N-flowchart-Z34-0 或 mermaid-diagram-XXXX-N-classId-Foo-0
+    // 为了能统一提取原始节点 ID，在迭代中用正则提取
+    var nodeIdRegex = /-(?:flowchart|classId)-(.+?)-\d+$/;
     var nodes = svg.querySelectorAll('g.node');
+    if (nodes.length === 0) {
+        var picked = [];
+        svg.querySelectorAll('g[id]').forEach(function (g) {
+            if (nodeIdRegex.test(g.getAttribute('id') || '')) picked.push(g);
+        });
+        nodes = picked;
+    }
+
     nodes.forEach(function (node) {
         // 跳过 cluster 内的 wrapper（cluster-label 等）
         if (node.closest('g.cluster') && node.querySelector('g.cluster-label')) return;
-        var shapeType = detectNodeShape(node);
+
+        var shapeType;
+        if (nodeShapeMap) {
+            var svgId = node.getAttribute('id') || '';
+            var nodeId = '';
+            var m = nodeIdRegex.exec(svgId);
+            if (m) {
+                nodeId = m[1];
+            } else {
+                // 兼容旧格式 flowchart-A-0
+                nodeId = svgId.replace(/^(flowchart|class|state|er|gantt|pie|git|mindmap)-/, '').replace(/-\d+$/, '');
+            }
+            shapeType = nodeShapeMap[nodeId] || 'rect';
+        } else {
+            shapeType = detectNodeShape(node);
+        }
+
         var color = shapeColors[shapeType] || shapeColors['rect'];
         if (!color) return;
 
-        // 主填充形状
-        var shape = node.querySelector('rect, circle, ellipse, polygon, path');
-        if (shape) {
-            if (color.fill) shape.setAttribute('fill', color.fill);
-            if (color.stroke) shape.setAttribute('stroke', color.stroke);
-        }
+        // 主填充形状：handDrawn 模式下 rough.js 用多条 path 叠加模拟手绘，需要给全部 path/rect/circle 都赋色
+        var shapes = node.querySelectorAll('rect, circle, ellipse, polygon, path');
+        shapes.forEach(function (s) {
+            if (color.fill) s.style.setProperty('fill', color.fill, 'important');
+            if (color.stroke) s.style.setProperty('stroke', color.stroke, 'important');
+        });
 
         // 文本颜色：SVG <text> 和 foreignObject 内的文本
+        // halo 色根据文字亮度智能选择：暗字配浅 halo / 亮字配深 halo，避免文字被描边吃掉
         if (color.text) {
+            var textHaloColor;
+            if (styleKey === 'sketch') {
+                // 解析文字色亮度，决定 halo 色
+                var hex = (color.text || '').replace('#', '');
+                var r = parseInt(hex.substr(0, 2), 16) || 0;
+                var g = parseInt(hex.substr(2, 2), 16) || 0;
+                var b = parseInt(hex.substr(4, 2), 16) || 0;
+                var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                // 暗文字 → 用节点底色作浅 halo（遮住 hatch 斜纯）；亮文字 → 用近黑作深 halo
+                textHaloColor = luminance < 0.5
+                    ? (color.fill || '#ffffff')
+                    : 'rgba(0,0,0,0.55)';
+            } else {
+                textHaloColor = isDark ? '#0b0b0b' : '#ffffff';
+            }
             node.querySelectorAll('text').forEach(function (t) {
-                t.setAttribute('fill', color.text);
+                t.style.setProperty('fill', color.text, 'important');
+                if (styleKey === 'sketch') {
+                    // 完全不给 SVG <text> 加 stroke（会撑大文字占位，导致被节点边界截断）
+                    // halo 效果完全交给 div 的 textShadow（不占位不影响布局）
+                    t.style.setProperty('stroke', 'none', 'important');
+                    t.style.setProperty('stroke-width', '0', 'important');
+                    t.style.setProperty('paint-order', 'fill', 'important');
+                    t.style.setProperty('font-weight', '600', 'important');
+                }
             });
             node.querySelectorAll('foreignObject').forEach(function (fo) {
+                // 让 textShadow 能超出 foreignObject 边界显示，不被裁切
+                if (styleKey === 'sketch') {
+                    fo.style.setProperty('overflow', 'visible', 'important');
+                }
                 var div = fo.querySelector('div');
-                if (div) div.style.color = color.text;
+                if (div) {
+                    div.style.color = color.text;
+                    if (styleKey === 'sketch') {
+                        div.style.overflow = 'visible';
+                        // 四周描边 + 加粗，保证在 hatch 斜纯背景上可读
+                        // 暗字用奶白 halo / 亮字用近黑 halo——这是抵抗斜纯纹理的关键
+                        div.style.textShadow =
+                            '-1px -1px 0 ' + textHaloColor + ',' +
+                            ' 1px -1px 0 ' + textHaloColor + ',' +
+                            '-1px  1px 0 ' + textHaloColor + ',' +
+                            ' 1px  1px 0 ' + textHaloColor + ',' +
+                            ' 0   -1px 0 ' + textHaloColor + ',' +
+                            ' 0    1px 0 ' + textHaloColor + ',' +
+                            '-1px  0   0 ' + textHaloColor + ',' +
+                            ' 1px  0   0 ' + textHaloColor + ',' +
+                            ' 0    0 3px ' + textHaloColor;
+                        div.style.fontWeight = '600';
+                    }
+                }
             });
         }
     });
@@ -3150,12 +3279,19 @@ function buildMermaidConfig() {
     var styleKey = getCurrentMermaidStyle();
     var preset = MERMAID_STYLE_PRESETS[styleKey] || MERMAID_STYLE_PRESETS[MERMAID_STYLE_DEFAULT];
     var themeVars = isDark ? preset.dark : preset.light;
-    var fontFamily = themeVars.fontFamily || MERMAID_FONT_DEFAULT;
+    // 剔除自定义键（如 shapeColors），避免传入 Mermaid themeVariables
+    var themeVarsClean = {};
+    for (var k in themeVars) {
+        if (themeVars.hasOwnProperty(k) && k !== 'shapeColors') {
+            themeVarsClean[k] = themeVars[k];
+        }
+    }
+    var fontFamily = themeVarsClean.fontFamily || MERMAID_FONT_DEFAULT;
     var flowCurve = (preset.flowchart && preset.flowchart.curve) || 'basis';
     return {
         startOnLoad: false,
         theme: 'base',
-        themeVariables: themeVars,
+        themeVariables: themeVarsClean,
         look: preset.look || 'classic',
         securityLevel: 'loose',
         suppressErrorRendering: false,
@@ -3164,11 +3300,13 @@ function buildMermaidConfig() {
         // 流程图
         flowchart: {
             useMaxWidth: true,
-            htmlLabels: true,
+            // 关闭 htmlLabels：所有节点文本走 SVG <text>，矢量缩放永不糊
+            // 代价：节点不再支持 HTML/Markdown 富文本，仅支持纯文本和 \n 换行
+            htmlLabels: false,
             curve: flowCurve,
-            padding: 18,
-            nodeSpacing: 55,
-            rankSpacing: 60,
+            padding: styleKey === 'sketch' ? 24 : 18,
+            nodeSpacing: styleKey === 'sketch' ? 60 : 55,
+            rankSpacing: styleKey === 'sketch' ? 65 : 60,
             diagramPadding: 12
         },
     // 时序图
@@ -3566,10 +3704,20 @@ async function renderMermaidDiagrams() {
 // 入参可以是预览区的 .mermaid-container 或 AI 聊天区的 .ai-mermaid-container
 function openMermaidZoomModal(container) {
     if (!container) return;
-    const svg = container.querySelector('svg');
-    if (!svg) {
+    if (!container.querySelector('svg')) {
         alert('图表尚未渲染完成，请稍候再试');
         return;
+    }
+
+    // 收集同类型容器，用于左右切换（预览区与 AI 聊天区分别独立）
+    const isAi = container.classList.contains('ai-mermaid-container');
+    const siblingSelector = isAi ? '.ai-mermaid-container' : '.mermaid-container';
+    const siblings = Array.from(document.querySelectorAll(siblingSelector))
+        .filter(el => el.querySelector('svg'));
+    let currentIndex = siblings.indexOf(container);
+    if (currentIndex < 0) {
+        siblings.unshift(container);
+        currentIndex = 0;
     }
 
     // 若已存在则先关闭，避免叠加
@@ -3581,7 +3729,7 @@ function openMermaidZoomModal(container) {
     modal.innerHTML = `
         <div class="mermaid-zoom-content" role="dialog" aria-label="Mermaid 图表放大查看">
             <div class="mermaid-zoom-toolbar">
-                <span class="mermaid-zoom-title">Mermaid 图表查看</span>
+                <span class="mermaid-zoom-title">Mermaid 图表查看 <span class="mermaid-zoom-counter"></span></span>
                 <div class="mermaid-zoom-actions">
                     <button class="mermaid-zoom-btn" data-act="zoom-out" title="缩小 (-)">−</button>
                     <span class="mermaid-zoom-scale">100%</span>
@@ -3592,9 +3740,15 @@ function openMermaidZoomModal(container) {
                 </div>
             </div>
             <div class="mermaid-zoom-viewport">
+                <button type="button" class="mermaid-zoom-nav mermaid-zoom-prev" data-act="prev" title="上一张 (←)" aria-label="上一张">
+                    <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/></svg>
+                </button>
                 <div class="mermaid-zoom-stage"></div>
+                <button type="button" class="mermaid-zoom-nav mermaid-zoom-next" data-act="next" title="下一张 (→)" aria-label="下一张">
+                    <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>
+                </button>
             </div>
-            <div class="mermaid-zoom-hint">滚轮缩放 · 拖动平移 · 双击适应 · Esc 关闭</div>
+            <div class="mermaid-zoom-hint">滚轮缩放 · 拖动平移 · 双击适应 · ←/→ 切换 · Esc 关闭</div>
         </div>
     `;
     document.body.appendChild(modal);
@@ -3602,44 +3756,89 @@ function openMermaidZoomModal(container) {
     const viewport = modal.querySelector('.mermaid-zoom-viewport');
     const stage = modal.querySelector('.mermaid-zoom-stage');
     const scaleLabel = modal.querySelector('.mermaid-zoom-scale');
+    const counterLabel = modal.querySelector('.mermaid-zoom-counter');
+    const prevBtn = modal.querySelector('.mermaid-zoom-prev');
+    const nextBtn = modal.querySelector('.mermaid-zoom-next');
 
-    // 先从原 SVG 读取逻辑尺寸（viewBox 优先；退回到渲染后的实际盒模型）
+    const MIN_SCALE = 0.1;
+    const MAX_SCALE = 10;
     let baseW = 0, baseH = 0;
-    if (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width) {
-        baseW = svg.viewBox.baseVal.width;
-        baseH = svg.viewBox.baseVal.height;
-    }
-    if (!baseW || !baseH) {
-        const b = svg.getBoundingClientRect();
-        baseW = b.width || 600;
-        baseH = b.height || 400;
+    let scale = 1, tx = 0, ty = 0;
+
+    // 将指定容器的 SVG 加载到 stage（克隆 + 保留矢量缩放能力）
+    function loadDiagram(targetContainer) {
+        const targetSvg = targetContainer && targetContainer.querySelector('svg');
+        if (!targetSvg) return false;
+
+        baseW = 0; baseH = 0;
+        if (targetSvg.viewBox && targetSvg.viewBox.baseVal && targetSvg.viewBox.baseVal.width) {
+            baseW = targetSvg.viewBox.baseVal.width;
+            baseH = targetSvg.viewBox.baseVal.height;
+        }
+        if (!baseW || !baseH) {
+            const b = targetSvg.getBoundingClientRect();
+            baseW = b.width || 600;
+            baseH = b.height || 400;
+        }
+
+        const clonedSvg = targetSvg.cloneNode(true);
+        // 确保 viewBox 存在，矢量缩放才能无损
+        if (!clonedSvg.getAttribute('viewBox')) {
+            clonedSvg.setAttribute('viewBox', `0 0 ${baseW} ${baseH}`);
+        }
+        clonedSvg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        // 清理硬编码尺寸，统一交给 applyTransform 通过 style 控制
+        clonedSvg.removeAttribute('width');
+        clonedSvg.removeAttribute('height');
+        clonedSvg.style.maxWidth = 'none';
+        clonedSvg.style.maxHeight = 'none';
+        clonedSvg.style.display = 'block';
+
+        stage.innerHTML = '';
+        stage.appendChild(clonedSvg);
+        return true;
     }
 
-    // 克隆 SVG 并设置显式尺寸（Mermaid 默认不带 width/height 属性，
-    // 放进绝对定位、无尺寸的 stage 中会渲染为 0 导致空白）
-    const clonedSvg = svg.cloneNode(true);
-    clonedSvg.style.maxWidth = 'none';
-    clonedSvg.style.maxHeight = 'none';
-    clonedSvg.style.width = baseW + 'px';
-    clonedSvg.style.height = baseH + 'px';
-    clonedSvg.setAttribute('width', baseW);
-    clonedSvg.setAttribute('height', baseH);
-    stage.appendChild(clonedSvg);
+    function updateNavState() {
+        if (siblings.length <= 1) {
+            prevBtn.style.display = 'none';
+            nextBtn.style.display = 'none';
+            counterLabel.textContent = '';
+            return;
+        }
+        prevBtn.style.display = '';
+        nextBtn.style.display = '';
+        prevBtn.disabled = currentIndex <= 0;
+        nextBtn.disabled = currentIndex >= siblings.length - 1;
+        counterLabel.textContent = `(${currentIndex + 1}/${siblings.length})`;
+    }
 
-    // stage 与 SVG 保持一致尺寸，便于 transform 计算
-    stage.style.width = baseW + 'px';
-    stage.style.height = baseH + 'px';
+    function gotoIndex(idx) {
+        if (idx < 0 || idx >= siblings.length || idx === currentIndex) return;
+        if (loadDiagram(siblings[idx])) {
+            currentIndex = idx;
+            updateNavState();
+            requestAnimationFrame(fitToViewport);
+        }
+    }
 
     function getSvgSize() {
         return { w: baseW, h: baseH };
     }
 
-    const MIN_SCALE = 0.1;
-    const MAX_SCALE = 10;
-    let scale = 1, tx = 0, ty = 0;
-
     function applyTransform() {
-        stage.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+        // 缩放通过 SVG 的实际尺寸实现（矢量重栅格化，永不糊）
+        // 平移交给 CSS transform，性能更好
+        const w = baseW * scale;
+        const h = baseH * scale;
+        stage.style.width = w + 'px';
+        stage.style.height = h + 'px';
+        stage.style.transform = `translate(${tx}px, ${ty}px)`;
+        const sv = stage.querySelector('svg');
+        if (sv) {
+            sv.style.width = w + 'px';
+            sv.style.height = h + 'px';
+        }
         scaleLabel.textContent = Math.round(scale * 100) + '%';
     }
 
@@ -3674,7 +3873,9 @@ function openMermaidZoomModal(container) {
         applyTransform();
     }
 
-    // 初始化（下一帧以便拿到容器尺寸）
+    // 初始化：加载首张并适应窗口（下一帧以便拿到容器尺寸）
+    loadDiagram(siblings[currentIndex]);
+    updateNavState();
     requestAnimationFrame(fitToViewport);
 
     // 滚轮缩放（以鼠标为中心）
@@ -3690,6 +3891,8 @@ function openMermaidZoomModal(container) {
     let dragging = false, dragSX = 0, dragSY = 0, origTx = 0, origTy = 0;
     function onMouseDown(e) {
         if (e.button !== 0) return;
+        // 点击导航按钮时不触发拖拽
+        if (e.target.closest('.mermaid-zoom-nav')) return;
         dragging = true;
         dragSX = e.clientX; dragSY = e.clientY;
         origTx = tx; origTy = ty;
@@ -3728,6 +3931,16 @@ function openMermaidZoomModal(container) {
         });
     });
 
+    // 左右导航按钮
+    prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        gotoIndex(currentIndex - 1);
+    });
+    nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        gotoIndex(currentIndex + 1);
+    });
+
     // 点击遮罩关闭
     modal.addEventListener('mousedown', (e) => {
         if (e.target === modal) close();
@@ -3736,6 +3949,16 @@ function openMermaidZoomModal(container) {
     // 键盘快捷键
     function onKeydown(e) {
         if (e.key === 'Escape') { close(); return; }
+        if (e.key === 'ArrowLeft') {
+            gotoIndex(currentIndex - 1);
+            e.preventDefault();
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            gotoIndex(currentIndex + 1);
+            e.preventDefault();
+            return;
+        }
         if (e.key === '+' || e.key === '=') {
             const rect = viewport.getBoundingClientRect();
             zoomAtPoint(rect.width / 2, rect.height / 2, 1.2);

@@ -1372,7 +1372,7 @@
                     suppressErrorRendering: false,
                     fontFamily: 'Arial, sans-serif',
                     logLevel: 'error',
-                    flowchart: { useMaxWidth: true, htmlLabels: true }
+                    flowchart: { useMaxWidth: true, htmlLabels: false }
                 }
             );
         } catch (err) {
