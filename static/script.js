@@ -3322,22 +3322,27 @@ function buildMermaidConfig() {
             wrap: true,
             width: 160,
             boxMargin: 10,
-            mirrorActors: true
+            mirrorActors: true,
+            htmlLabels: false
         },
         // 类图
         class: {
             useMaxWidth: true,
-            fontSize: 14
+            fontSize: 14,
+            // 走 SVG <text> 矢量渲染，缩放永不糊
+            htmlLabels: false
         },
         // 状态图
         state: {
             useMaxWidth: true,
-            fontSize: 14
+            fontSize: 14,
+            htmlLabels: false
         },
         // ER图
         er: {
             useMaxWidth: true,
-            fontSize: 14
+            fontSize: 14,
+            htmlLabels: false
         },
         // 甘特图
         gantt: {
@@ -3349,69 +3354,83 @@ function buildMermaidConfig() {
             leftPadding: 85,
             gridLineStartPadding: 35,
             fontSize: 13,
-            numberSectionStyles: 4
+            numberSectionStyles: 4,
+            htmlLabels: false
         },
         // 饼图
         pie: {
             useMaxWidth: true,
-            textPosition: 0.7
+            textPosition: 0.7,
+            htmlLabels: false
         },
         // 旅程图
         journey: {
-            useMaxWidth: true
+            useMaxWidth: true,
+            htmlLabels: false
         },
         // Git图
         gitGraph: {
             useMaxWidth: true,
             mainBranchName: 'main',
-            showCommitLabel: true
+            showCommitLabel: true,
+            htmlLabels: false
         },
         // 思维导图
         mindmap: {
             useMaxWidth: true,
-            padding: 12
+            padding: 12,
+            htmlLabels: false
         },
         // 时间线
         timeline: {
             useMaxWidth: true,
-            padding: 12
+            padding: 12,
+            htmlLabels: false
         },
         // 桑基图
         sankey: {
-            useMaxWidth: true
+            useMaxWidth: true,
+            htmlLabels: false
         },
         // XY图表
         xyChart: {
-            useMaxWidth: true
+            useMaxWidth: true,
+            htmlLabels: false
         },
         // 象限图
         quadrantChart: {
-            useMaxWidth: true
+            useMaxWidth: true,
+            htmlLabels: false
         },
         // 需求图
         requirement: {
             useMaxWidth: true,
-            fontSize: 14
+            fontSize: 14,
+            htmlLabels: false
         },
         // 块图
         block: {
             useMaxWidth: true,
-            padding: 12
+            padding: 12,
+            htmlLabels: false
         },
         // 数据包图
         packet: {
             useMaxWidth: true,
-            padding: 12
+            padding: 12,
+            htmlLabels: false
         },
         // 架构图
         architecture: {
             useMaxWidth: true,
-            padding: 12
+            padding: 12,
+            htmlLabels: false
         },
         // 看板
         kanban: {
             useMaxWidth: true,
-            padding: 12
+            padding: 12,
+            htmlLabels: false
         }
     };
 }
@@ -3765,6 +3784,138 @@ function openMermaidZoomModal(container) {
     let baseW = 0, baseH = 0;
     let scale = 1, tx = 0, ty = 0;
 
+    // 将 SVG 内的 foreignObject（HTML 内容）转换为原生 SVG <text>
+    // 原因：Chromium 对 foreignObject 总是先栅格化为 bitmap 再缩放，放大会糊
+    // 只作用于 modal 内的克隆 SVG，不影响预览区原图
+    function rasterizeForeignObjectsToText(svgEl) {
+        if (!svgEl) return;
+        const fos = Array.from(svgEl.querySelectorAll('foreignObject'));
+        if (!fos.length) return;
+        const NS = 'http://www.w3.org/2000/svg';
+        const svgRect = svgEl.getBoundingClientRect();
+        if (!svgRect.width || !svgRect.height) return;
+        // 屏幕像素 -> SVG viewBox 单位的换算比例
+        const sx = baseW / svgRect.width;
+        const sy = baseH / svgRect.height;
+
+        fos.forEach(fo => {
+            const foX = parseFloat(fo.getAttribute('x')) || 0;
+            const foY = parseFloat(fo.getAttribute('y')) || 0;
+            const foRect = fo.getBoundingClientRect();
+            if (!foRect.width || !foRect.height) return;
+
+            // 收集所有非空文本节点
+            const walker = document.createTreeWalker(fo, NodeFilter.SHOW_TEXT, {
+                acceptNode: n => (n.textContent && n.textContent.trim())
+                    ? NodeFilter.FILTER_ACCEPT
+                    : NodeFilter.FILTER_REJECT
+            });
+            const records = [];
+            let n;
+            while ((n = walker.nextNode())) {
+                const range = document.createRange();
+                range.selectNodeContents(n);
+                // getClientRects() 对多行文本逐行返回 rect，避免合并
+                const rects = Array.from(range.getClientRects()).filter(r => r.width && r.height);
+                if (!rects.length) continue;
+                const parent = n.parentElement;
+                const cs = parent ? getComputedStyle(parent) : null;
+                const fontSizePx = cs ? (parseFloat(cs.fontSize) || 14) : 14;
+                const fontFamily = cs ? cs.fontFamily : 'sans-serif';
+                const fontWeight = cs ? cs.fontWeight : 'normal';
+                const fontStyle = cs ? cs.fontStyle : 'normal';
+                const fill = cs ? cs.color : '#000';
+                const textAlign = cs ? cs.textAlign : 'left';
+
+                // 按顶部坐标粗划分行（同一行可能被拆成多个 rect）
+                const lines = [];
+                rects.forEach(r => {
+                    const last = lines[lines.length - 1];
+                    if (last && Math.abs(last.top - r.top) < fontSizePx * 0.5) {
+                        last.right = Math.max(last.right, r.right);
+                        last.left = Math.min(last.left, r.left);
+                    } else {
+                        lines.push({ top: r.top, left: r.left, right: r.right, bottom: r.bottom });
+                    }
+                });
+
+                const fullText = n.textContent;
+                // 多行时按比例切分文本（近似，可接受）
+                const textChunks = lines.length === 1
+                    ? [fullText]
+                    : splitTextByLines(fullText, lines);
+
+                lines.forEach((ln, i) => {
+                    records.push({
+                        text: textChunks[i] || '',
+                        rx: (ln.left - foRect.left) * sx,
+                        ry: (ln.top - foRect.top) * sy,
+                        rw: (ln.right - ln.left) * sx,
+                        rh: (ln.bottom - ln.top) * sy,
+                        fontSize: fontSizePx * sx,
+                        fontFamily,
+                        fontWeight,
+                        fontStyle,
+                        fill,
+                        textAlign
+                    });
+                });
+            }
+
+            if (!records.length) return;
+
+            const g = document.createElementNS(NS, 'g');
+            g.setAttribute('transform', `translate(${foX}, ${foY})`);
+            g.setAttribute('class', 'mermaid-zoom-fo-text');
+            records.forEach(r => {
+                if (!r.text || !r.text.trim()) return;
+                const t = document.createElementNS(NS, 'text');
+                let anchor = 'start';
+                let cx = r.rx;
+                if (r.textAlign === 'center') {
+                    anchor = 'middle';
+                    cx = r.rx + r.rw / 2;
+                } else if (r.textAlign === 'right' || r.textAlign === 'end') {
+                    anchor = 'end';
+                    cx = r.rx + r.rw;
+                }
+                t.setAttribute('x', cx);
+                // 近似基线：字号 * 0.82 从顶部偏移
+                t.setAttribute('y', r.ry + r.fontSize * 0.82);
+                t.setAttribute('font-size', r.fontSize);
+                t.setAttribute('font-family', r.fontFamily);
+                t.setAttribute('font-weight', r.fontWeight);
+                t.setAttribute('font-style', r.fontStyle);
+                t.setAttribute('fill', r.fill);
+                t.setAttribute('text-anchor', anchor);
+                t.setAttribute('dominant-baseline', 'alphabetic');
+                t.textContent = r.text;
+                g.appendChild(t);
+            });
+            fo.parentNode.replaceChild(g, fo);
+        });
+    }
+
+    function splitTextByLines(text, lines) {
+        // 按每行宽度比例分配字符（带中文估计粗略，可接受）
+        const total = lines.reduce((s, l) => s + (l.right - l.left), 0);
+        if (!total) return [text];
+        const result = [];
+        let cursor = 0;
+        const len = text.length;
+        for (let i = 0; i < lines.length; i++) {
+            if (i === lines.length - 1) {
+                result.push(text.slice(cursor));
+            } else {
+                const ratio = (lines[i].right - lines[i].left) / total;
+                const take = Math.max(1, Math.round(len * ratio));
+                result.push(text.slice(cursor, cursor + take));
+                cursor += take;
+            }
+        }
+        return result;
+    }
+
     // 将指定容器的 SVG 加载到 stage（克隆 + 保留矢量缩放能力）
     function loadDiagram(targetContainer) {
         const targetSvg = targetContainer && targetContainer.querySelector('svg');
@@ -3796,6 +3947,13 @@ function openMermaidZoomModal(container) {
 
         stage.innerHTML = '';
         stage.appendChild(clonedSvg);
+        // 临时按 1:1 显示，便于准确测量 foreignObject 内文本布局
+        clonedSvg.style.width = baseW + 'px';
+        clonedSvg.style.height = baseH + 'px';
+        stage.style.width = baseW + 'px';
+        stage.style.height = baseH + 'px';
+        // 将 foreignObject 转为 SVG <text>，避免 Chromium 栅格化造成糊化
+        rasterizeForeignObjectsToText(clonedSvg);
         return true;
     }
 
