@@ -122,6 +122,7 @@ function setupEventListeners() {
     editorSwapBtn.addEventListener('click', toggleEditorPosition);
     editorTextarea.addEventListener('input', onEditorInput);
     editorTextarea.addEventListener('keydown', onEditorTextareaKeydown);
+    editorTextarea.addEventListener('paste', onEditorPasteImage);
     exportCurrentPdfBtn.addEventListener('click', exportCurrentFileToPdf);
     exportSelectedPdfBtn.addEventListener('click', exportSelectedFilesToPdf);
     if (deleteSelectedBtn) deleteSelectedBtn.addEventListener('click', deleteSelectedItems);
@@ -442,6 +443,10 @@ async function previewFile(path, silent = false, restoreScroll = false) {
             previewTitle.textContent = data.filename;
             currentMarkdownSource = data.raw_markdown || '';
             previewContent.innerHTML = `<div class="markdown-body">${data.html}</div>`;
+
+            // 修复图片路径：将相对路径转换为 API 路由
+            const mdBody = previewContent.querySelector('.markdown-body');
+            if (mdBody) fixImagePaths(mdBody);
             
             // 添加代码块复制按钮
             addCodeCopyButtons();
@@ -1619,6 +1624,73 @@ async function exitEditMode() {
     });
 }
 
+// ===== 编辑器粘贴图片处理 =====
+async function onEditorPasteImage(e) {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+
+    // 查找剪贴板中的图片
+    let imageItem = null;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+            imageItem = items[i];
+            break;
+        }
+    }
+    if (!imageItem) return; // 没有图片，走默认粘贴
+
+    e.preventDefault(); // 阻止默认粘贴行为
+
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    // 构造文件名：如果剪贴板图片没有名字，使用 paste_时间戳.png
+    let filename = file.name || '';
+    if (!filename || filename === 'image.png') {
+        const ts = new Date().toISOString().replace(/[:.\-T]/g, '').slice(0, 14);
+        const ext = file.type.split('/')[1] || 'png';
+        filename = `paste_${ts}.${ext}`;
+    }
+
+    // 在光标处插入上传占位符
+    const textarea = editorTextarea;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const placeholder = `![uploading...]()`;
+    const before = textarea.value.substring(0, start);
+    const after = textarea.value.substring(end);
+    textarea.value = before + placeholder + after;
+    textarea.selectionStart = textarea.selectionEnd = start + placeholder.length;
+    onEditorInput(); // 触发实时预览
+
+    // 上传图片
+    const formData = new FormData();
+    formData.append('image', file, filename);
+    formData.append('file_path', selectedFile || '');
+
+    try {
+        const response = await fetch('/api/library/upload-image', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            // 替换占位符为真实的 Markdown 图片引用
+            const markdownImg = `![${data.filename}](${data.markdown_path})`;
+            textarea.value = textarea.value.replace(placeholder, markdownImg);
+            onEditorInput(); // 触发实时预览更新
+        } else {
+            // 上传失败，移除占位符
+            textarea.value = textarea.value.replace(placeholder, '');
+            showError(data.error || '图片上传失败');
+        }
+    } catch (error) {
+        textarea.value = textarea.value.replace(placeholder, '');
+        showError('图片上传失败: ' + error.message);
+    }
+}
+
 // 编辑器输入事件 - 带防抖的实时预览
 function onEditorInput() {
     previewEditUnsaved = true;
@@ -1713,6 +1785,10 @@ function renderLivePreview() {
         // 只替换 .markdown-body 的子节点，不销毁容器本身，避免滚动容器重建造成闪屏
         const body = getOrCreateMarkdownBody();
         body.innerHTML = html;
+
+        // 修复图片路径：将相对路径转换为 API 路由
+        fixImagePaths(body);
+
         previewContent.scrollTop = savedScrollTop;
 
         // 添加代码块复制按钮
@@ -1754,6 +1830,26 @@ function getOrCreateMarkdownBody() {
         previewContent.appendChild(body);
     }
     return body;
+}
+
+// 修复图片路径：将相对路径的图片 src 转换为通过 API 访问的绝对路径
+function fixImagePaths(container) {
+    if (!selectedFile) return;
+
+    const fileDir = selectedFile.includes('/') ? selectedFile.substring(0, selectedFile.lastIndexOf('/')) : '';
+
+    container.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src');
+        if (!src) return;
+        // 跳过已经是绝对 URL 的图片
+        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/api/')) return;
+        // 跳过 data: URI
+        if (src.startsWith('data:')) return;
+
+        // 拼接相对路径：当前文件目录 + 图片相对路径
+        const imagePath = fileDir ? `${fileDir}/${src}` : src;
+        img.setAttribute('src', `/api/library/image?path=${encodeURIComponent(imagePath)}`);
+    });
 }
 
 // 渲染中动画硬编码最小显示时间（1s）

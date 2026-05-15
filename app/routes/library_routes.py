@@ -1,11 +1,14 @@
 """Library路由：文件和文件夹管理"""
 import logging
 
-from flask import Blueprint, jsonify, current_app, request
+from flask import Blueprint, jsonify, current_app, request, send_from_directory
 from datetime import datetime
 import os
 import shutil
 from app.utils import allowed_file, safe_filename
+
+# 允许上传的图片扩展名
+ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'}
 
 library_bp = Blueprint('library', __name__)
 logger = logging.getLogger(__name__)
@@ -614,3 +617,95 @@ def create_file():
     except Exception as e:
         return jsonify({'error': f'创建文件失败: {str(e)}'}), 500
 
+
+@library_bp.route('/api/library/upload-image', methods=['POST'])
+def upload_image():
+    """上传图片到当前文件的 .assets 目录
+    
+    图片保存在与当前 Markdown 文件同级的 .assets/ 子目录中，
+    返回相对路径，可直接用于 Markdown 图片引用。
+    """
+    if 'image' not in request.files:
+        return jsonify({'error': '没有图片被上传'}), 400
+    
+    image = request.files['image']
+    # 当前正在编辑的文件路径（相对 library 根目录）
+    file_path = request.form.get('file_path', '')
+    
+    if image.filename == '':
+        return jsonify({'error': '没有选择图片'}), 400
+    
+    # 检查文件扩展名
+    ext = image.filename.rsplit('.', 1)[-1].lower() if '.' in image.filename else ''
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return jsonify({'error': f'不支持的图片格式: .{ext}'}), 400
+    
+    base_path = current_app.config['LIBRARY_FOLDER']
+    
+    # 确定 .assets 目录位置：与当前文件同级
+    if file_path:
+        file_dir = os.path.dirname(file_path)
+    else:
+        file_dir = ''
+    
+    assets_dir_rel = os.path.join(file_dir, '.assets') if file_dir else '.assets'
+    assets_dir_abs = os.path.join(base_path, assets_dir_rel)
+    
+    # 安全检查
+    if not os.path.abspath(assets_dir_abs).startswith(os.path.abspath(base_path)):
+        return jsonify({'error': '非法路径'}), 403
+    
+    # 确保 .assets 目录存在
+    os.makedirs(assets_dir_abs, exist_ok=True)
+    
+    # 生成文件名：时间戳 + 原始文件名
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    original_name = safe_filename(image.filename)
+    name, file_ext = os.path.splitext(original_name)
+    filename = f"{name}_{timestamp}{file_ext}"
+    
+    filepath = os.path.join(assets_dir_abs, filename)
+    image.save(filepath)
+    
+    # 返回相对于当前文件的 Markdown 引用路径
+    markdown_path = f'.assets/{filename}'
+    
+    logger.info("图片上传成功: %s -> %s", image.filename, filepath)
+    
+    return jsonify({
+        'success': True,
+        'filename': filename,
+        'markdown_path': markdown_path,
+        'full_path': os.path.join(assets_dir_rel, filename).replace('\\', '/')
+    })
+
+
+@library_bp.route('/api/library/image')
+def serve_image():
+    """提供 library 中的图片文件访问
+    
+    通过 ?path=xxx 参数指定图片相对路径
+    """
+    image_path = request.args.get('path', '')
+    
+    if not image_path:
+        return jsonify({'error': '路径不能为空'}), 400
+    
+    base_path = current_app.config['LIBRARY_FOLDER']
+    full_path = os.path.join(base_path, image_path)
+    
+    # 安全检查
+    if not os.path.abspath(full_path).startswith(os.path.abspath(base_path)):
+        return jsonify({'error': '非法路径'}), 403
+    
+    if not os.path.exists(full_path) or not os.path.isfile(full_path):
+        return jsonify({'error': '图片不存在'}), 404
+    
+    # 检查是否为允许的图片格式
+    ext = full_path.rsplit('.', 1)[-1].lower() if '.' in full_path else ''
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return jsonify({'error': '不支持的文件格式'}), 400
+    
+    directory = os.path.dirname(full_path)
+    filename = os.path.basename(full_path)
+    return send_from_directory(directory, filename)
