@@ -311,6 +311,7 @@ def run(argv: list[str] | None = None) -> None:
     logger.info("📝 访问 %s 使用应用", url)
     logger.info("📁 数据目录: %s", get_data_dir())
     logger.info("📚 文档库目录: %s", app.config['LIBRARY_FOLDER'])
+    logger.info("🖼️ 图片存储目录: 与 Markdown 文件同级的 .assets/ 子目录（编辑模式下粘贴的图片会自动保存于此）")
     logger.info("🗂️ 日志目录: %s", get_log_dir())
     logger.info("📄 日志文件: %s", log_file)
     logger.info("🌐 自动打开浏览器: %s", "是" if open_browser else "否")

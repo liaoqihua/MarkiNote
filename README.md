@@ -224,11 +224,14 @@ uv run python main.py
 
 ```text
 lib/                   文档库（Markdown / TXT 文件）
+lib/<文档所在目录>/.assets/   编辑模式下粘贴的图片（与当前 Markdown 同级的 .assets/ 子目录）
 logs/                  日志文件（自动轮转，单文件最大 10MB，保留 5 个备份）
 .ai_conversations/     AI 对话历史
 .ai_backups/           AI 修改备份
 ai_settings.json       AI 配置（提供商、模型、API Key）
 ```
+
+> 🖼️ **图片存储说明**：在编辑模式下直接粘贴（`Ctrl+V`）剪贴板中的图片，会自动上传并保存到当前 Markdown 文件所在目录的 `.assets/` 子目录（例如 `lib/notes/.assets/paste_20260515120000.png`），Markdown 中使用相对路径 `.assets/xxx.png` 引用。
 
 **打包后运行时**，保存在系统用户级目录：
 

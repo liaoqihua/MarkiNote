@@ -224,11 +224,14 @@ Uploaded Markdown / TXT files are saved in the document library directory. **Dir
 
 ```text
 lib/                   Document library (Markdown / TXT files)
+lib/<doc-dir>/.assets/   Pasted images in edit mode (a `.assets/` subdirectory next to the current Markdown file)
 logs/                  Log files (auto-rotated, max 10 MB per file, 5 backups kept)
 .ai_conversations/     AI conversation history
 .ai_backups/           AI change backups
 ai_settings.json       AI configuration (provider, model, API Key)
 ```
+
+> 🖼️ **Image storage**: When you paste (`Ctrl+V`) an image from the clipboard in edit mode, it is automatically uploaded and saved to the `.assets/` subdirectory next to the current Markdown file (e.g. `lib/notes/.assets/paste_20260515120000.png`). The Markdown file references it via the relative path `.assets/xxx.png`.
 
 **Packaged run** — data files are stored in system user directories:
 
