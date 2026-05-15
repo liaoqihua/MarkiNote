@@ -1850,6 +1850,247 @@ function fixImagePaths(container) {
         const imagePath = fileDir ? `${fileDir}/${src}` : src;
         img.setAttribute('src', `/api/library/image?path=${encodeURIComponent(imagePath)}`);
     });
+
+    // 为所有图片添加点击放大查看功能
+    container.querySelectorAll('img').forEach(img => {
+        img.style.cursor = 'zoom-in';
+        img.addEventListener('click', (e) => {
+            e.preventDefault();
+            openImageZoomModal(img, container);
+        });
+    });
+}
+
+// ===== 图片缩放查看模态框 =====
+function openImageZoomModal(clickedImg, container) {
+    // 收集当前预览区域内所有图片
+    const allImages = Array.from(container.querySelectorAll('img'));
+    if (!allImages.length) return;
+    let currentIndex = allImages.indexOf(clickedImg);
+    if (currentIndex < 0) currentIndex = 0;
+
+    // 若已存在则先关闭
+    const existing = document.querySelector('.image-zoom-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.className = 'image-zoom-modal';
+    modal.innerHTML = `
+        <div class="image-zoom-content" role="dialog" aria-label="图片查看">
+            <div class="image-zoom-toolbar">
+                <span class="image-zoom-title">图片查看 <span class="image-zoom-counter"></span></span>
+                <div class="image-zoom-actions">
+                    <button class="image-zoom-btn" data-act="zoom-out" title="缩小 (-)">−</button>
+                    <span class="image-zoom-scale">100%</span>
+                    <button class="image-zoom-btn" data-act="zoom-in" title="放大 (+)">+</button>
+                    <button class="image-zoom-btn" data-act="fit" title="适应窗口 (0)">适应</button>
+                    <button class="image-zoom-btn" data-act="reset" title="实际大小 (1)">1:1</button>
+                    <button class="image-zoom-btn image-zoom-close" data-act="close" title="关闭 (Esc)">✕</button>
+                </div>
+            </div>
+            <div class="image-zoom-viewport">
+                <button type="button" class="image-zoom-nav image-zoom-prev" data-act="prev" title="上一张 (←)" aria-label="上一张">
+                    <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/></svg>
+                </button>
+                <div class="image-zoom-stage"></div>
+                <button type="button" class="image-zoom-nav image-zoom-next" data-act="next" title="下一张 (→)" aria-label="下一张">
+                    <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>
+                </button>
+            </div>
+            <div class="image-zoom-hint">滚轮缩放 · 拖动平移 · 双击适应 · ←/→ 切换 · Esc 关闭</div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const viewport = modal.querySelector('.image-zoom-viewport');
+    const stage = modal.querySelector('.image-zoom-stage');
+    const scaleLabel = modal.querySelector('.image-zoom-scale');
+    const counterLabel = modal.querySelector('.image-zoom-counter');
+    const prevBtn = modal.querySelector('.image-zoom-prev');
+    const nextBtn = modal.querySelector('.image-zoom-next');
+
+    const MIN_SCALE = 0.1;
+    const MAX_SCALE = 20;
+    let imgW = 0, imgH = 0;
+    let scale = 1, tx = 0, ty = 0;
+
+    function loadImage(img) {
+        return new Promise((resolve) => {
+            const newImg = new Image();
+            newImg.onload = () => {
+                imgW = newImg.naturalWidth || newImg.width;
+                imgH = newImg.naturalHeight || newImg.height;
+                newImg.className = 'image-zoom-img';
+                newImg.draggable = false;
+                stage.innerHTML = '';
+                stage.appendChild(newImg);
+                resolve(true);
+            };
+            newImg.onerror = () => resolve(false);
+            newImg.src = img.src;
+        });
+    }
+
+    function applyTransform() {
+        const w = imgW * scale;
+        const h = imgH * scale;
+        stage.style.width = w + 'px';
+        stage.style.height = h + 'px';
+        stage.style.transform = `translate(${tx}px, ${ty}px)`;
+        const imgEl = stage.querySelector('img');
+        if (imgEl) {
+            imgEl.style.width = w + 'px';
+            imgEl.style.height = h + 'px';
+        }
+        scaleLabel.textContent = Math.round(scale * 100) + '%';
+    }
+
+    function fitToViewport() {
+        const rect = viewport.getBoundingClientRect();
+        const padding = 40;
+        const sx = (rect.width - padding) / imgW;
+        const sy = (rect.height - padding) / imgH;
+        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.min(sx, sy)));
+        tx = (rect.width - imgW * scale) / 2;
+        ty = (rect.height - imgH * scale) / 2;
+        applyTransform();
+    }
+
+    function resetTo100() {
+        const rect = viewport.getBoundingClientRect();
+        scale = 1;
+        tx = (rect.width - imgW) / 2;
+        ty = (rect.height - imgH) / 2;
+        applyTransform();
+    }
+
+    function zoomAtPoint(cx, cy, factor) {
+        const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
+        if (newScale === scale) return;
+        const ratio = newScale / scale;
+        tx = cx - (cx - tx) * ratio;
+        ty = cy - (cy - ty) * ratio;
+        scale = newScale;
+        applyTransform();
+    }
+
+    function updateNavState() {
+        if (allImages.length <= 1) {
+            prevBtn.style.display = 'none';
+            nextBtn.style.display = 'none';
+            counterLabel.textContent = '';
+            return;
+        }
+        prevBtn.style.display = '';
+        nextBtn.style.display = '';
+        prevBtn.disabled = currentIndex <= 0;
+        nextBtn.disabled = currentIndex >= allImages.length - 1;
+        counterLabel.textContent = `(${currentIndex + 1}/${allImages.length})`;
+    }
+
+    async function gotoIndex(idx) {
+        if (idx < 0 || idx >= allImages.length || idx === currentIndex) return;
+        const ok = await loadImage(allImages[idx]);
+        if (ok) {
+            currentIndex = idx;
+            updateNavState();
+            requestAnimationFrame(fitToViewport);
+        }
+    }
+
+    // 初始化加载
+    (async () => {
+        await loadImage(allImages[currentIndex]);
+        updateNavState();
+        requestAnimationFrame(fitToViewport);
+    })();
+
+    // 滚轮缩放
+    function onWheel(e) {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        zoomAtPoint(e.clientX - rect.left, e.clientY - rect.top, factor);
+    }
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+
+    // 拖拽平移
+    let dragging = false, dragSX = 0, dragSY = 0, origTx = 0, origTy = 0;
+    function onMouseDown(e) {
+        if (e.button !== 0) return;
+        if (e.target.closest('.image-zoom-nav')) return;
+        dragging = true;
+        dragSX = e.clientX; dragSY = e.clientY;
+        origTx = tx; origTy = ty;
+        viewport.classList.add('dragging');
+        e.preventDefault();
+    }
+    function onMouseMove(e) {
+        if (!dragging) return;
+        tx = origTx + (e.clientX - dragSX);
+        ty = origTy + (e.clientY - dragSY);
+        applyTransform();
+    }
+    function onMouseUp() {
+        if (!dragging) return;
+        dragging = false;
+        viewport.classList.remove('dragging');
+    }
+    viewport.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    // 双击适应
+    viewport.addEventListener('dblclick', fitToViewport);
+
+    // 工具栏按钮
+    modal.querySelectorAll('.image-zoom-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const act = btn.getAttribute('data-act');
+            const rect = viewport.getBoundingClientRect();
+            const cx = rect.width / 2, cy = rect.height / 2;
+            if (act === 'zoom-in') zoomAtPoint(cx, cy, 1.2);
+            else if (act === 'zoom-out') zoomAtPoint(cx, cy, 1 / 1.2);
+            else if (act === 'fit') fitToViewport();
+            else if (act === 'reset') resetTo100();
+            else if (act === 'close') close();
+        });
+    });
+
+    // 左右导航
+    prevBtn.addEventListener('click', (e) => { e.stopPropagation(); gotoIndex(currentIndex - 1); });
+    nextBtn.addEventListener('click', (e) => { e.stopPropagation(); gotoIndex(currentIndex + 1); });
+
+    // 点击遮罩关闭
+    modal.addEventListener('mousedown', (e) => {
+        if (e.target === modal) close();
+    });
+
+    // 键盘快捷键
+    function onKeydown(e) {
+        if (e.key === 'Escape') { close(); return; }
+        if (e.key === 'ArrowLeft') { gotoIndex(currentIndex - 1); e.preventDefault(); return; }
+        if (e.key === 'ArrowRight') { gotoIndex(currentIndex + 1); e.preventDefault(); return; }
+        if (e.key === '+' || e.key === '=') {
+            const rect = viewport.getBoundingClientRect();
+            zoomAtPoint(rect.width / 2, rect.height / 2, 1.2);
+        } else if (e.key === '-') {
+            const rect = viewport.getBoundingClientRect();
+            zoomAtPoint(rect.width / 2, rect.height / 2, 1 / 1.2);
+        } else if (e.key === '0') {
+            fitToViewport();
+        } else if (e.key === '1') {
+            resetTo100();
+        }
+    }
+    document.addEventListener('keydown', onKeydown);
+
+    function close() {
+        document.removeEventListener('keydown', onKeydown);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        modal.remove();
+    }
 }
 
 // 渲染中动画硬编码最小显示时间（1s）

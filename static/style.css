@@ -1629,6 +1629,220 @@ body.pink-mode .mermaid-container {
 .markdown-body img {
     max-width: 100%;
     border-radius: var(--radius-md);
+    cursor: zoom-in;
+    transition: opacity 0.15s;
+}
+
+.markdown-body img:hover {
+    opacity: 0.85;
+}
+
+/* ===== 图片缩放查看模态框 ===== */
+.image-zoom-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: imageZoomFadeIn 0.15s ease;
+}
+
+@keyframes imageZoomFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.image-zoom-content {
+    position: relative;
+    width: 92vw;
+    height: 90vh;
+    background: var(--modal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+}
+
+.image-zoom-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--sidebar-bg);
+    flex-shrink: 0;
+}
+
+.image-zoom-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.image-zoom-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.image-zoom-scale {
+    min-width: 48px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+}
+
+.image-zoom-btn {
+    background: var(--hover-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 0 10px;
+    min-width: 32px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+}
+
+.image-zoom-btn:hover {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+}
+
+.image-zoom-btn.image-zoom-close {
+    margin-left: 8px;
+}
+
+.image-zoom-btn.image-zoom-close:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #fff;
+}
+
+.image-zoom-viewport {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    background-color: var(--bg-color);
+    background-image:
+        linear-gradient(45deg, var(--hover-bg) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--hover-bg) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--hover-bg) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--hover-bg) 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+.image-zoom-viewport.dragging {
+    cursor: grabbing;
+}
+
+.image-zoom-stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    user-select: none;
+    -webkit-user-select: none;
+    will-change: transform;
+}
+
+.image-zoom-stage img {
+    display: block;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+    border-radius: 0;
+}
+
+.image-zoom-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+    pointer-events: none;
+    opacity: 0.85;
+    user-select: none;
+}
+
+.image-zoom-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 64px;
+    padding: 0;
+    background: transparent;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    user-select: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, background 0.15s ease, transform 0.15s ease;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+.image-zoom-prev { left: 16px; }
+.image-zoom-next { right: 16px; }
+
+.image-zoom-modal:hover .image-zoom-nav {
+    opacity: 0.85;
+    pointer-events: auto;
+}
+
+.image-zoom-modal:hover .image-zoom-nav:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.image-zoom-modal:hover .image-zoom-prev:hover {
+    transform: translateY(-50%) translateX(-2px);
+}
+
+.image-zoom-modal:hover .image-zoom-next:hover {
+    transform: translateY(-50%) translateX(2px);
+}
+
+.image-zoom-nav:disabled {
+    opacity: 0.2 !important;
+    cursor: not-allowed;
+    pointer-events: none;
+    background: transparent !important;
+    transform: translateY(-50%) !important;
+}
+
+.image-zoom-counter {
+    margin-left: 6px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
 }
 
 /* 数学公式样式 */
