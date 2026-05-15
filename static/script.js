@@ -191,6 +191,8 @@ function setupEventListeners() {
     if (tocToggleBtn) tocToggleBtn.addEventListener('click', toggleToc);
     if (tocCloseBtn) tocCloseBtn.addEventListener('click', () => setTocVisible(false));
     if (previewContent) previewContent.addEventListener('scroll', onPreviewScroll, { passive: true });
+    // 窗口尺寸变化会改变 textarea 的可视宽度（影响软换行）和预览布局，需失效滚动缓存
+    window.addEventListener('resize', invalidateScrollSyncCache);
     // 目录栏层级切换按钮（H1/H2/H3/其它）
     document.querySelectorAll('.toc-level-btn').forEach(btn => {
         btn.addEventListener('click', () => toggleTocLevel(btn.dataset.level));
@@ -1698,6 +1700,9 @@ function onEditorInput() {
     // 更新 currentMarkdownSource 以便其他功能使用
     currentMarkdownSource = editorTextarea.value;
 
+    // 输入会改变行数 → 失效滚动同步缓存
+    invalidateScrollSyncCache();
+
     // 防抖渲染：在用户停止输入 1s 后才渲染预览
     // 渲染中动画仅在“真正开始渲染”时才显示，避免用户输入期间频繁闪烁
     if (_editDebounceTimer) clearTimeout(_editDebounceTimer);
@@ -1780,14 +1785,64 @@ function renderLivePreview() {
     }
 
     try {
-        const html = marked.parse(mdText);
-
-        // 只替换 .markdown-body 的子节点，不销毁容器本身，避免滚动容器重建造成闪屏
+        // 用 lexer 拆分顶级 token，逐块渲染并注入 data-source-line
+        // 这样预览的每个顶级元素都能精确对应到源代码起始行号，
+        // 即便有图片/Mermaid 把某块预览撑得很高也不影响行号映射的准确性
         const body = getOrCreateMarkdownBody();
-        body.innerHTML = html;
+        let renderedAnnotated = false;
+        try {
+            if (typeof marked.lexer === 'function' && typeof marked.parser === 'function') {
+                const tokens = marked.lexer(mdText);
+                body.innerHTML = '';
+                let curLine = 0;
+                for (const tok of tokens) {
+                    const raw = tok.raw || '';
+                    const newlines = (raw.match(/\n/g) || []).length;
+                    if (tok.type === 'space') {
+                        curLine += newlines;
+                        continue;
+                    }
+                    let blockHtml = '';
+                    try {
+                        blockHtml = marked.parser([tok]);
+                    } catch (_) {
+                        blockHtml = '';
+                    }
+                    if (blockHtml) {
+                        const tmp = document.createElement('div');
+                        tmp.innerHTML = blockHtml;
+                        // tok 可能渲染出多个顶级元素（极少数），都打上同一个起始行号
+                        while (tmp.firstChild) {
+                            const child = tmp.firstChild;
+                            if (child.nodeType === 1) {
+                                child.setAttribute('data-source-line', String(curLine));
+                            }
+                            body.appendChild(child);
+                        }
+                    }
+                    curLine += newlines;
+                }
+                renderedAnnotated = true;
+            }
+        } catch (_) {
+            renderedAnnotated = false;
+        }
+
+        if (!renderedAnnotated) {
+            // lexer/parser 不可用时，退回到一次性 parse
+            body.innerHTML = marked.parse(mdText);
+        }
 
         // 修复图片路径：将相对路径转换为 API 路由
         fixImagePaths(body);
+
+        // 图片加载完成后预览总高/各块 offsetTop 会变 → 失效缓存
+        body.querySelectorAll('img').forEach(img => {
+            if (!img.complete) {
+                img.addEventListener('load', invalidateScrollSyncCache, { once: true });
+                img.addEventListener('error', invalidateScrollSyncCache, { once: true });
+            }
+        });
 
         previewContent.scrollTop = savedScrollTop;
 
@@ -1806,9 +1861,13 @@ function renderLivePreview() {
         // 重建目录
         buildToc();
 
+        // 渲染后失效滚动同步缓存
+        invalidateScrollSyncCache();
+
         // 布局稳定后兜底恢复一次滚动位置
         requestAnimationFrame(() => {
             previewContent.scrollTop = savedScrollTop;
+            invalidateScrollSyncCache();
         });
     } catch (err) {
         console.error('实时预览渲染失败:', err);
@@ -2286,44 +2345,213 @@ function setSidebarCollapsed(collapsed, save = true) {
     }
 }
 
-// 编辑器滚动时同步预览滚动
+// === 滚动同步缓存 ===
+let _scrollSyncCache = null;
+function invalidateScrollSyncCache() { _scrollSyncCache = null; }
+
+// 计算编辑器行高（像素）
+function getEditorLineHeight() {
+    const cs = window.getComputedStyle(editorTextarea);
+    let lh = parseFloat(cs.lineHeight);
+    if (!lh || isNaN(lh)) {
+        const fs = parseFloat(cs.fontSize) || 14;
+        lh = fs * 1.7;
+    }
+    return lh;
+}
+
+// 用镜像 div 测量编辑器每一源代码行的真实 Y 坐标（兼容软换行）
+function measureEditorLineYs() {
+    const ta = editorTextarea;
+    const cs = window.getComputedStyle(ta);
+    const mirror = document.createElement('div');
+    // 同步关键样式，保持换行表现一致
+    const props = [
+        'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight',
+        'letterSpacing', 'wordSpacing', 'tabSize', 'MozTabSize',
+        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+        'boxSizing', 'whiteSpace', 'wordBreak', 'overflowWrap'
+    ];
+    for (const p of props) mirror.style[p] = cs[p];
+    if (!mirror.style.whiteSpace || mirror.style.whiteSpace === 'normal') {
+        mirror.style.whiteSpace = 'pre-wrap';
+    }
+    mirror.style.position = 'absolute';
+    mirror.style.left = '-99999px';
+    mirror.style.top = '0';
+    mirror.style.visibility = 'hidden';
+    mirror.style.width = ta.clientWidth + 'px';
+
+    const lines = ta.value.split('\n');
+    // 给每一行包一个 span 用于测量起始 Y
+    const frag = document.createDocumentFragment();
+    const spans = [];
+    for (let i = 0; i < lines.length; i++) {
+        const span = document.createElement('span');
+        // 空行用 \u200b 占位以便有可测高度
+        span.textContent = lines[i].length === 0 ? '\u200b' : lines[i];
+        frag.appendChild(span);
+        spans.push(span);
+        if (i < lines.length - 1) frag.appendChild(document.createTextNode('\n'));
+    }
+    mirror.appendChild(frag);
+    document.body.appendChild(mirror);
+
+    const ys = new Array(lines.length);
+    const padTop = parseFloat(cs.paddingTop) || 0;
+    for (let i = 0; i < spans.length; i++) {
+        ys[i] = spans[i].offsetTop - padTop;
+    }
+    document.body.removeChild(mirror);
+    return ys;
+}
+
+// 收集预览中带 data-source-line 的元素，得到 (line, top) 序列
+function collectPreviewAnchors() {
+    const body = previewContent.querySelector('.markdown-body');
+    if (!body) return [];
+    const nodes = body.querySelectorAll('[data-source-line]');
+    const anchors = [];
+    nodes.forEach(el => {
+        const line = parseInt(el.getAttribute('data-source-line'), 10);
+        if (isNaN(line)) return;
+        // offsetTop 取相对 .markdown-body 的累加偏移
+        let top = 0, p = el;
+        while (p && p !== body) { top += p.offsetTop; p = p.offsetParent; }
+        anchors.push({ line, top });
+    });
+    anchors.sort((a, b) => a.line - b.line);
+    return anchors;
+}
+
+function getScrollSyncData() {
+    if (_scrollSyncCache) return _scrollSyncCache;
+    const editorLineYs = measureEditorLineYs();
+    const previewAnchors = collectPreviewAnchors();
+    _scrollSyncCache = { editorLineYs, previewAnchors };
+    return _scrollSyncCache;
+}
+
+// 给定行号在 anchors 里做插值，返回对应预览像素位置
+function lineToPreviewTop(line, anchors) {
+    if (anchors.length === 0) return null;
+    if (line <= anchors[0].line) return anchors[0].top;
+    if (line >= anchors[anchors.length - 1].line) return anchors[anchors.length - 1].top;
+    // 二分
+    let lo = 0, hi = anchors.length - 1;
+    while (lo + 1 < hi) {
+        const mid = (lo + hi) >> 1;
+        if (anchors[mid].line <= line) lo = mid; else hi = mid;
+    }
+    const a = anchors[lo], b = anchors[hi];
+    const span = Math.max(1, b.line - a.line);
+    const t = (line - a.line) / span;
+    return a.top + t * (b.top - a.top);
+}
+
+// 给定预览像素位置反查对应源代码行号
+function previewTopToLine(top, anchors) {
+    if (anchors.length === 0) return null;
+    if (top <= anchors[0].top) return anchors[0].line;
+    if (top >= anchors[anchors.length - 1].top) return anchors[anchors.length - 1].line;
+    let lo = 0, hi = anchors.length - 1;
+    while (lo + 1 < hi) {
+        const mid = (lo + hi) >> 1;
+        if (anchors[mid].top <= top) lo = mid; else hi = mid;
+    }
+    const a = anchors[lo], b = anchors[hi];
+    const span = Math.max(1, b.top - a.top);
+    const t = (top - a.top) / span;
+    return a.line + t * (b.line - a.line);
+}
+
+// editorLineYs[lineIdx] 给出源代码行 lineIdx 在 textarea 内的 Y（不含 paddingTop）
+// 反查：editor.scrollTop -> 当前可见顶部对应的源代码行（小数）
+function editorScrollTopToLine(scrollTop, editorLineYs) {
+    if (!editorLineYs || editorLineYs.length === 0) return 0;
+    if (scrollTop <= editorLineYs[0]) return 0;
+    if (scrollTop >= editorLineYs[editorLineYs.length - 1]) return editorLineYs.length - 1;
+    let lo = 0, hi = editorLineYs.length - 1;
+    while (lo + 1 < hi) {
+        const mid = (lo + hi) >> 1;
+        if (editorLineYs[mid] <= scrollTop) lo = mid; else hi = mid;
+    }
+    const ya = editorLineYs[lo], yb = editorLineYs[hi];
+    const span = Math.max(1, yb - ya);
+    const t = (scrollTop - ya) / span;
+    return lo + t * (hi - lo);
+}
+
+function lineToEditorScrollTop(line, editorLineYs) {
+    if (!editorLineYs || editorLineYs.length === 0) return 0;
+    const last = editorLineYs.length - 1;
+    if (line <= 0) return editorLineYs[0];
+    if (line >= last) return editorLineYs[last];
+    const lo = Math.floor(line);
+    const hi = Math.min(last, lo + 1);
+    const t = line - lo;
+    return editorLineYs[lo] + t * (editorLineYs[hi] - editorLineYs[lo]);
+}
+
+// 编辑器滚动时同步预览滚动（基于源行号 + 锚点插值）
 function onEditorScroll() {
     if (_syncScrolling) return;
     _syncScrolling = true;
 
-    const editor = editorTextarea;
-    const preview = previewContent;
+    try {
+        const editor = editorTextarea;
+        const preview = previewContent;
+        const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
+        const previewMaxScroll = preview.scrollHeight - preview.clientHeight;
+        if (editorMaxScroll <= 0 || previewMaxScroll <= 0) return;
 
-    // 计算编辑器滚动比例
-    const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
-    if (editorMaxScroll <= 0) { _syncScrolling = false; return; }
-    const editorRatio = editor.scrollTop / editorMaxScroll;
+        const data = getScrollSyncData();
+        const anchors = data.previewAnchors;
 
-    // 应用到预览区域
-    const previewMaxScroll = preview.scrollHeight - preview.clientHeight;
-    preview.scrollTop = editorRatio * previewMaxScroll;
+        if (!anchors || anchors.length < 2) {
+            const ratio = editor.scrollTop / editorMaxScroll;
+            preview.scrollTop = ratio * previewMaxScroll;
+            return;
+        }
 
-    requestAnimationFrame(() => { _syncScrolling = false; });
+        const topLine = editorScrollTopToLine(editor.scrollTop, data.editorLineYs);
+        const target = lineToPreviewTop(topLine, anchors);
+        if (target == null) return;
+        preview.scrollTop = Math.min(previewMaxScroll, Math.max(0, target));
+    } finally {
+        requestAnimationFrame(() => { _syncScrolling = false; });
+    }
 }
 
-// 预览滚动时同步编辑器滚动
+// 预览滚动时同步编辑器滚动（反向）
 function onPreviewScrollInEdit() {
     if (_syncScrolling) return;
     _syncScrolling = true;
 
-    const editor = editorTextarea;
-    const preview = previewContent;
+    try {
+        const editor = editorTextarea;
+        const preview = previewContent;
+        const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
+        const previewMaxScroll = preview.scrollHeight - preview.clientHeight;
+        if (editorMaxScroll <= 0 || previewMaxScroll <= 0) return;
 
-    // 计算预览滚动比例
-    const previewMaxScroll = preview.scrollHeight - preview.clientHeight;
-    if (previewMaxScroll <= 0) { _syncScrolling = false; return; }
-    const previewRatio = preview.scrollTop / previewMaxScroll;
+        const data = getScrollSyncData();
+        const anchors = data.previewAnchors;
 
-    // 应用到编辑器
-    const editorMaxScroll = editor.scrollHeight - editor.clientHeight;
-    editor.scrollTop = previewRatio * editorMaxScroll;
+        if (!anchors || anchors.length < 2) {
+            const ratio = preview.scrollTop / previewMaxScroll;
+            editor.scrollTop = ratio * editorMaxScroll;
+            return;
+        }
 
-    requestAnimationFrame(() => { _syncScrolling = false; });
+        const line = previewTopToLine(preview.scrollTop, anchors);
+        if (line == null) return;
+        const targetY = lineToEditorScrollTop(line, data.editorLineYs);
+        editor.scrollTop = Math.min(editorMaxScroll, Math.max(0, targetY));
+    } finally {
+        requestAnimationFrame(() => { _syncScrolling = false; });
+    }
 }
 
 // 处理编辑模式下的键盘快捷键
