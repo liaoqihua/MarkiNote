@@ -5153,12 +5153,9 @@ async function onFileListMouseUp(e) {
     );
 
     if (isSecondClick) {
-        // 第二次 click 完成 → 双击
-        if (!downWasSelected) {
-            // 未勾选项的双击：打开/进入
-            handleFileClick(downPath, downType);
-        }
-        // 已勾选项的纯双击：什么都不做
+        // 第二次 click 完成 → 双击：无论是否勾选，都打开/进入
+        // （双击后按住移动会在 mousemove 中进入 drag 模式，mouseup 走 mode==='drag' 分支提前返回，不会到达此处）
+        handleFileClick(downPath, downType);
         _lastClickTime = 0;
         _lastClickPath = null;
     } else {
