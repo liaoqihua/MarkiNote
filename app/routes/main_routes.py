@@ -35,13 +35,18 @@ def preview_file():
         if not os.path.exists(full_path):
             return jsonify({'error': '文件不存在'}), 404
         
-        # 读取并渲染Markdown
+        # 读取文件内容
         with open(full_path, 'r', encoding='utf-8') as f:
             md_content = f.read()
-        
-        # 处理Markdown内容
-        html_content = process_markdown(md_content)
-        
+
+        # HTML 文件直接返回原始内容，不走 Markdown 渲染管道
+        ext = os.path.splitext(full_path)[1].lower()
+        if ext in ('.html', '.htm'):
+            html_content = md_content
+        else:
+            # 处理 Markdown 内容
+            html_content = process_markdown(md_content)
+
         logger.debug("文件预览: %s, 大小: %d 字节", file_path, len(md_content))
         return jsonify({
             'success': True,

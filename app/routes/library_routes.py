@@ -591,7 +591,7 @@ def create_file():
     
     # 检查文件扩展名
     ext = file_name.lower().split('.')[-1]
-    if ext not in ['md', 'markdown', 'txt']:
+    if ext not in ['md', 'markdown', 'txt', 'html', 'htm']:
         return jsonify({'error': '不支持的文件格式'}), 400
     
     # 安全处理文件名
@@ -605,9 +605,25 @@ def create_file():
         if os.path.exists(file_path):
             return jsonify({'error': '文件已存在'}), 400
         
-        # 创建文件
+        # 创建文件：根据扩展名生成初始内容
+        base_title = file_name.rsplit('.', 1)[0]
+        if ext in ('html', 'htm'):
+            initial_content = (
+                '<!DOCTYPE html>\n'
+                '<html lang="zh-CN">\n'
+                '<head>\n'
+                '    <meta charset="UTF-8">\n'
+                f'    <title>{base_title}</title>\n'
+                '</head>\n'
+                '<body>\n'
+                f'    <h1>{base_title}</h1>\n'
+                '</body>\n'
+                '</html>\n'
+            )
+        else:
+            initial_content = '# ' + base_title + '\n\n'
         with open(file_path, 'w', encoding='utf-8') as f:
-            f.write('# ' + file_name.rsplit('.', 1)[0] + '\n\n')
+            f.write(initial_content)
         
         return jsonify({
             'success': True,

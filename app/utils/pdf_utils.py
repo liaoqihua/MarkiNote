@@ -5,6 +5,7 @@ PDF 导出使用真实浏览器渲染 HTML 后打印为 PDF，确保 Mermaid、M
 from __future__ import annotations
 
 import html
+import io
 import logging
 import os
 import re
@@ -16,10 +17,18 @@ from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
+try:
+    from pypdf import PdfReader, PdfWriter  # type: ignore
+    _PYPDF_AVAILABLE = True
+except Exception:  # noqa: BLE001 - 依赖缺失时降级到模板合并路径
+    PdfReader = None  # type: ignore
+    PdfWriter = None  # type: ignore
+    _PYPDF_AVAILABLE = False
+
 from app.utils.markdown_utils import process_markdown
 
 
-SUPPORTED_EXPORT_EXTENSIONS = {'.md', '.markdown', '.txt'}
+SUPPORTED_EXPORT_EXTENSIONS = {'.md', '.markdown', '.txt', '.html', '.htm'}
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +50,7 @@ class PdfDocument:
     title: str
     markdown: str
     html: str
+    is_html: bool = False
 
 
 def safe_library_file(base_dir: str | os.PathLike[str], rel_path: str) -> Path:
@@ -59,7 +69,7 @@ def safe_library_file(base_dir: str | os.PathLike[str], rel_path: str) -> Path:
     if not target.is_file():
         raise ValueError('只能导出文件，不能导出文件夹')
     if target.suffix.lower() not in SUPPORTED_EXPORT_EXTENSIONS:
-        raise ValueError('只支持导出 .md、.markdown、.txt 文件')
+        raise ValueError('只支持导出 .md、.markdown、.txt、.html 文件')
 
     return target
 
@@ -67,13 +77,16 @@ def safe_library_file(base_dir: str | os.PathLike[str], rel_path: str) -> Path:
 def read_pdf_document(base_dir: str | os.PathLike[str], rel_path: str) -> PdfDocument:
     """读取单个文档并渲染为 HTML。"""
     target = safe_library_file(base_dir, rel_path)
-    markdown = target.read_text(encoding='utf-8')
-    rendered = process_markdown(markdown)
+    raw = target.read_text(encoding='utf-8')
+    is_html = target.suffix.lower() in ('.html', '.htm')
+    # HTML 文件直接使用原文作为渲染结果，不走 Markdown 渲染管道
+    rendered = raw if is_html else process_markdown(raw)
     return PdfDocument(
         path=rel_path.replace('\\', '/').strip('/'),
         title=target.name,
-        markdown=markdown,
+        markdown=raw,
         html=rendered,
+        is_html=is_html,
     )
 
 
@@ -146,6 +159,24 @@ def build_toc_html(entries: Iterable[TocEntry]) -> str:
     '''
 
 
+def _split_html_document(raw_html: str) -> tuple[str, str]:
+    """将独立 HTML 文档拆为（head 样式/资源片段, body innerHTML）。
+
+    用于批量合并导出时将 HTML 文档嵌入模板，尽可能保留原有样式。
+    """
+    soup = BeautifulSoup(raw_html, 'html.parser')
+    style_blocks: list[str] = []
+    if soup.head:
+        for tag in soup.head.find_all(['style', 'link']):
+            style_blocks.append(str(tag))
+    if soup.body:
+        body_inner = ''.join(str(c) for c in soup.body.children)
+    else:
+        # 未包含完整骨架的片段 HTML，直接作为 body 使用
+        body_inner = raw_html
+    return '\n'.join(style_blocks), body_inner
+
+
 def build_browser_pdf_html(
     documents: Iterable[PdfDocument],
     *,
@@ -160,15 +191,29 @@ def build_browser_pdf_html(
 
     for index, doc in enumerate(docs):
         page_break_class = ' pdf-page-break' if index else ''
-        parts.append(
-            f'''
-            <article class="pdf-document{page_break_class}">
-                <h1 class="pdf-document-title">{html.escape(doc.title)}</h1>
-                <div class="pdf-document-path">{html.escape(doc.path)}</div>
-                <div class="markdown-body">{doc.html}</div>
-            </article>
-            '''
-        )
+        if doc.is_html:
+            # HTML 文档：提取 head 中的 style/link，并将 body 内容嵌入独立 article
+            head_assets, body_inner = _split_html_document(doc.html)
+            parts.append(
+                f'''
+                <article class="pdf-document pdf-html-document{page_break_class}">
+                    <h1 class="pdf-document-title">{html.escape(doc.title)}</h1>
+                    <div class="pdf-document-path">{html.escape(doc.path)}</div>
+                    {head_assets}
+                    <div class="pdf-html-body">{body_inner}</div>
+                </article>
+                '''
+            )
+        else:
+            parts.append(
+                f'''
+                <article class="pdf-document{page_break_class}">
+                    <h1 class="pdf-document-title">{html.escape(doc.title)}</h1>
+                    <div class="pdf-document-path">{html.escape(doc.path)}</div>
+                    <div class="markdown-body">{doc.html}</div>
+                </article>
+                '''
+            )
 
     style_url = _join_static_url(static_base_url, 'style.css')
     mermaid_url = _join_static_url(static_base_url, 'libs/mermaid.min.js')
@@ -402,6 +447,30 @@ def render_pdf_bytes(
     static_base_url: str = '',
 ) -> bytes:
     """用真实浏览器渲染并打印 PDF 字节。"""
+    docs = list(documents)
+    if not docs:
+        raise ValueError('请至少选择一个文档')
+
+    # 单个 HTML 文档：交由浏览器作为独立页面原生打印，不套外层模板，
+    # 完整保留原页的 <!DOCTYPE>、head、style、script 与布局。
+    if len(docs) == 1 and docs[0].is_html:
+        return render_native_html_pdf_bytes(docs[0].html, title=title)
+
+    # 多文档且含 HTML 文档：逐份原生打印后用 pypdf 合并，保证 HTML 100% 保真。
+    # 全为 Markdown 的多文档仍走原模板路径，以保留统一 TOC 首页。
+    if any(d.is_html for d in docs) and _PYPDF_AVAILABLE:
+        return _render_and_merge_per_document(docs, title=title, static_base_url=static_base_url)
+
+    return _render_template_pdf_bytes(docs, title=title, static_base_url=static_base_url)
+
+
+def _render_template_pdf_bytes(
+    documents: Iterable[PdfDocument],
+    *,
+    title: str,
+    static_base_url: str,
+) -> bytes:
+    """使用 build_browser_pdf_html 模板一次性渲染多文档 PDF。"""
     html_content = build_browser_pdf_html(documents, title=title, static_base_url=static_base_url)
 
     try:
@@ -417,6 +486,237 @@ def render_pdf_bytes(
                 pdf_error = page.evaluate('window.__MARKINOTE_PDF_ERROR__')
                 if pdf_error:
                     logger.warning('PDF browser render warning: %s', pdf_error)
+                return page.pdf(
+                    format='A4',
+                    print_background=True,
+                    prefer_css_page_size=True,
+                    margin={'top': '16mm', 'right': '14mm', 'bottom': '16mm', 'left': '14mm'},
+                    outline=True,
+                    tagged=True,
+                )
+            finally:
+                browser.close()
+    except PlaywrightError as exc:
+        raise RuntimeError(f'浏览器 PDF 渲染失败: {exc}') from exc
+
+
+def _print_doc_pdf_in_browser(browser, doc: PdfDocument, *, static_base_url: str) -> bytes:
+    """在已启动的浏览器上打印单个文档为 PDF 字节。"""
+    page = browser.new_page(viewport={'width': 1280, 'height': 1800}, device_scale_factor=1)
+    try:
+        if doc.is_html:
+            # HTML 文档原生打印，保留 <!DOCTYPE>、head、style、script
+            page.set_content(doc.html or '', wait_until='networkidle', timeout=60000)
+            try:
+                page.evaluate(
+                    'async () => { if (document.fonts && document.fonts.ready) { await document.fonts.ready; } }'
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            # Markdown 文档走“单文档模板”路径，保证样式与现有预览一致
+            html_content = build_browser_pdf_html([doc], title=doc.title, static_base_url=static_base_url)
+            page.set_content(html_content, wait_until='networkidle', timeout=60000)
+            page.wait_for_function(
+                'window.__MARKINOTE_PDF_READY__ === true',
+                timeout=int(os.environ.get('MARKINOTE_PDF_RENDER_TIMEOUT_MS', '60000')),
+            )
+            pdf_error = page.evaluate('window.__MARKINOTE_PDF_ERROR__')
+            if pdf_error:
+                logger.warning('PDF browser render warning: %s', pdf_error)
+        return page.pdf(
+            format='A4',
+            print_background=True,
+            prefer_css_page_size=True,
+            margin={'top': '16mm', 'right': '14mm', 'bottom': '16mm', 'left': '14mm'},
+            outline=True,
+            tagged=True,
+        )
+    finally:
+        page.close()
+
+
+def _collect_doc_headings(doc: PdfDocument) -> list[tuple[int, str]]:
+    """从单份文档的 HTML 中提取 h1-h6 标题。
+
+    返回 [(level, text), ...]，HTML 文档仅扫描 <body>，避免误取 head 中的标题。
+    """
+    headings: list[tuple[int, str]] = []
+    try:
+        soup = BeautifulSoup(doc.html or '', 'html.parser')
+        scope = soup.body if (doc.is_html and soup.body) else soup
+        for heading in scope.find_all(re.compile(r'^h[1-6]$')):
+            text = heading.get_text(' ', strip=True)
+            if not text:
+                continue
+            level = int(heading.name[1])
+            headings.append((level, text))
+    except Exception:  # noqa: BLE001 - 解析失败不阻断合并流程
+        logger.debug('Failed to extract headings from %s', doc.title, exc_info=True)
+    return headings
+
+
+def _build_merged_toc_html(
+    docs: list[PdfDocument],
+    *,
+    title: str = 'MarkiNote Export',
+    static_base_url: str = '',
+) -> str:
+    """生成汇总目录首页 HTML（逐文档列出 h1-h6 树状结构）。"""
+    docs_html: list[str] = []
+    for doc in docs:
+        sub_items_html: list[str] = []
+        for level, text in _collect_doc_headings(doc):
+            lvl = min(max(level, 1), 6)
+            sub_items_html.append(
+                f'<li class="merged-toc-item merged-toc-level-{lvl}">{html.escape(text)}</li>'
+            )
+        sub_list = (
+            f'<ol class="merged-toc-sublist">{"".join(sub_items_html)}</ol>'
+            if sub_items_html else ''
+        )
+        docs_html.append(
+            f'<li class="merged-toc-doc">'
+            f'<div class="merged-toc-doc-title">{html.escape(doc.title)}</div>'
+            f'<div class="merged-toc-doc-path">{html.escape(doc.path)}</div>'
+            f'{sub_list}'
+            f'</li>'
+        )
+
+    style_url = _join_static_url(static_base_url, 'style.css') if static_base_url else ''
+    style_link = f'<link rel="stylesheet" href="{style_url}">' if style_url else ''
+
+    return f'''<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>{html.escape(title)} - 目录</title>
+    {style_link}
+    <style>
+        @page {{ size: A4; margin: 16mm 14mm; }}
+        html, body {{ background: #ffffff !important; }}
+        body {{ margin: 0; color: #1f2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; }}
+        .merged-toc-title {{ margin: 0 0 18px 0; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; font-size: 22px; }}
+        .merged-toc-list {{ list-style: none; padding: 0; margin: 0; }}
+        .merged-toc-doc {{ margin-bottom: 18px; page-break-inside: avoid; break-inside: avoid; }}
+        .merged-toc-doc-title {{ font-weight: 700; font-size: 15px; padding-bottom: 4px; border-bottom: 1px dashed #cbd5e1; margin-bottom: 6px; color: #111827; }}
+        .merged-toc-doc-path {{ color: #6b7280; font-size: 11px; margin-bottom: 6px; }}
+        .merged-toc-sublist {{ list-style: none; padding: 0; margin: 0; }}
+        .merged-toc-item {{ margin: 3px 0; line-height: 1.4; color: #374151; }}
+        .merged-toc-level-1 {{ padding-left: 0; font-size: 13px; font-weight: 600; }}
+        .merged-toc-level-2 {{ padding-left: 18px; font-size: 13px; }}
+        .merged-toc-level-3 {{ padding-left: 36px; font-size: 12px; }}
+        .merged-toc-level-4 {{ padding-left: 54px; font-size: 12px; color: #4b5563; }}
+        .merged-toc-level-5 {{ padding-left: 72px; font-size: 12px; color: #6b7280; }}
+        .merged-toc-level-6 {{ padding-left: 90px; font-size: 12px; color: #6b7280; }}
+    </style>
+</head>
+<body>
+    <h1 class="merged-toc-title">目录</h1>
+    <ol class="merged-toc-list">
+        {''.join(docs_html)}
+    </ol>
+</body>
+</html>'''
+
+
+def _print_html_string_pdf(browser, html_content: str) -> bytes:
+    """在已启动的浏览器上打印一段 HTML 为 PDF 字节（不依赖渲染就绪信号）。"""
+    page = browser.new_page(viewport={'width': 1280, 'height': 1800}, device_scale_factor=1)
+    try:
+        page.set_content(html_content or '', wait_until='networkidle', timeout=60000)
+        try:
+            page.evaluate(
+                'async () => { if (document.fonts && document.fonts.ready) { await document.fonts.ready; } }'
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return page.pdf(
+            format='A4',
+            print_background=True,
+            prefer_css_page_size=True,
+            margin={'top': '16mm', 'right': '14mm', 'bottom': '16mm', 'left': '14mm'},
+            outline=True,
+            tagged=True,
+        )
+    finally:
+        page.close()
+
+
+def _render_and_merge_per_document(
+    docs: list[PdfDocument],
+    *,
+    title: str,
+    static_base_url: str,
+) -> bytes:
+    """逐份原生打印文档 PDF，再用 pypdf 合并为一份，以保证 HTML 100% 保真。
+
+    合并需要多篇文档时会在首部插入一页“汇总目录”，呈现每篇文档及其 h1-h6 层级。
+    同时为每篇文档添加顶级 pypdf 书签，提供 PDF 阅读器侧边栏导航。
+    """
+    if not _PYPDF_AVAILABLE:
+        # 理论上不会走到这里（上层已拦截），作为双保险降级。
+        return _render_template_pdf_bytes(docs, title=title, static_base_url=static_base_url)
+
+    parts: list[tuple[str, bytes]] = []
+    try:
+        with sync_playwright() as playwright:
+            browser = _launch_chromium(playwright)
+            try:
+                # 多篇文档才需要汇总目录首页；单篇不加（避免冗余）
+                if len(docs) > 1:
+                    toc_html = _build_merged_toc_html(docs, title=title, static_base_url=static_base_url)
+                    toc_pdf = _print_html_string_pdf(browser, toc_html)
+                    parts.append(('目录', toc_pdf))
+                for doc in docs:
+                    pdf_bytes = _print_doc_pdf_in_browser(browser, doc, static_base_url=static_base_url)
+                    parts.append((doc.title, pdf_bytes))
+            finally:
+                browser.close()
+    except PlaywrightError as exc:
+        raise RuntimeError(f'浏览器 PDF 渲染失败: {exc}') from exc
+
+    return _merge_pdfs_with_bookmarks(parts)
+
+
+def _merge_pdfs_with_bookmarks(items: list[tuple[str, bytes]]) -> bytes:
+    """将多份 PDF 字节以顺序合并，并为每份添加顶级书签。"""
+    if not items:
+        raise ValueError('没有可合并的 PDF 内容')
+    writer = PdfWriter()
+    for doc_title, pdf_bytes in items:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        start_page = len(writer.pages)
+        for page in reader.pages:
+            writer.add_page(page)
+        try:
+            writer.add_outline_item(title=doc_title or 'Document', page_number=start_page)
+        except Exception:  # noqa: BLE001 - 书签添加失败不应中断合并
+            logger.debug('Failed to add outline item for %s', doc_title, exc_info=True)
+    out = io.BytesIO()
+    writer.write(out)
+    out.seek(0)
+    return out.read()
+
+
+def render_native_html_pdf_bytes(html_content: str, *, title: str = 'MarkiNote Export') -> bytes:
+    """将独立 HTML 内容直接交给浏览器打印为 PDF。
+
+    不套任何外层模板，本质上等价于在浏览器里打开该 HTML 后使用“另存为 PDF”。
+    """
+    try:
+        with sync_playwright() as playwright:
+            browser = _launch_chromium(playwright)
+            try:
+                page = browser.new_page(viewport={'width': 1280, 'height': 1800}, device_scale_factor=1)
+                page.set_content(html_content or '', wait_until='networkidle', timeout=60000)
+                # 等待字体加载，避免 FOUT
+                try:
+                    page.evaluate(
+                        'async () => { if (document.fonts && document.fonts.ready) { await document.fonts.ready; } }'
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
                 return page.pdf(
                     format='A4',
                     print_background=True,

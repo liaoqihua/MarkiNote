@@ -237,7 +237,7 @@ function selectUploadType(type) {
         // 上传文件
         fileInput.removeAttribute('webkitdirectory');
         fileInput.removeAttribute('directory');
-        fileInput.setAttribute('accept', '.md,.markdown,.txt');
+        fileInput.setAttribute('accept', '.md,.markdown,.txt,.html,.htm');
     } else if (type === 'folder') {
         // 上传文件夹
         fileInput.setAttribute('webkitdirectory', '');
@@ -444,26 +444,42 @@ async function previewFile(path, silent = false, restoreScroll = false) {
 
             previewTitle.textContent = data.filename;
             currentMarkdownSource = data.raw_markdown || '';
-            previewContent.innerHTML = `<div class="markdown-body">${data.html}</div>`;
 
-            // 修复图片路径：将相对路径转换为 API 路由
-            const mdBody = previewContent.querySelector('.markdown-body');
-            if (mdBody) fixImagePaths(mdBody);
-            
-            // 添加代码块复制按钮
-            addCodeCopyButtons();
-            
-            // 添加数学公式复制按钮
-            addMathCopyButtons();
-            
-            // 渲染Mermaid图表
-            renderMermaidDiagrams();
-            
-            // 触发MathJax渲染
-            renderMathJax();
+            const isHtmlFile = /\.(html|htm)$/i.test(path);
+            if (isHtmlFile) {
+                // HTML 文件：用 iframe 隔离渲染，让浏览器作为独立文档处理，
+                // 完整保留页面自带的 <style>/<link>/<script>/<base>，且不污染主页样式。
+                previewContent.innerHTML = '';
+                const iframe = document.createElement('iframe');
+                iframe.className = 'html-preview-frame';
+                iframe.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals allow-same-origin');
+                iframe.style.cssText = 'width:100%;height:100%;border:0;background:#fff;display:block;';
+                iframe.srcdoc = data.html || '';
+                previewContent.appendChild(iframe);
+                // 从 iframe 内部提取 h1-h6 构建 TOC（在下面统一调用 buildToc 时会识别 iframe 模式）
+                buildToc();
+            } else {
+                previewContent.innerHTML = `<div class="markdown-body">${data.html}</div>`;
 
-            // 渲染完成后构建目录
-            buildToc();
+                // 修复图片路径：将相对路径转换为 API 路由
+                const mdBody = previewContent.querySelector('.markdown-body');
+                if (mdBody) fixImagePaths(mdBody);
+
+                // 添加代码块复制按钮
+                addCodeCopyButtons();
+
+                // 添加数学公式复制按钮
+                addMathCopyButtons();
+
+                // 渲染Mermaid图表
+                renderMermaidDiagrams();
+
+                // 触发MathJax渲染
+                renderMathJax();
+
+                // 渲染完成后构建目录
+                buildToc();
+            }
 
             // 静默刷新或 restoreScroll 模式下恢复滚动位置
             if (silent || restoreScroll) {
@@ -642,7 +658,7 @@ async function handleFileUpload(event) {
     if (files.length === 0) return;
     
     // 过滤只保留支持的文件类型
-    const allowedExtensions = ['.md', '.markdown', '.txt'];
+    const allowedExtensions = ['.md', '.markdown', '.txt', '.html', '.htm'];
     const validFiles = files.filter(file => {
         const ext = '.' + file.name.split('.').pop().toLowerCase();
         return allowedExtensions.includes(ext);
@@ -1694,7 +1710,7 @@ async function onEditorPasteImage(e) {
 }
 
 // 编辑器输入事件 - 带防抖的实时预览
-function onEditorInput() {
+function onEditorInput(e) {
     previewEditUnsaved = true;
 
     // 更新 currentMarkdownSource 以便其他功能使用
@@ -1703,8 +1719,13 @@ function onEditorInput() {
     // 输入会改变行数 → 失效滚动同步缓存
     invalidateScrollSyncCache();
 
+    // HTML/XML 自动闭标签：输入 > 完成开标签时立即补全对应闭标签
+    if (e && e.inputType === 'insertText' && e.data === '>') {
+        _tryAutoCloseTag();
+    }
+
     // 防抖渲染：在用户停止输入 1s 后才渲染预览
-    // 渲染中动画仅在“真正开始渲染”时才显示，避免用户输入期间频繁闪烁
+    // 渲染中动画仅在"真正开始渲染"时才显示，避免用户输入期间频繁闪烁
     if (_editDebounceTimer) clearTimeout(_editDebounceTimer);
     _editDebounceTimer = setTimeout(() => {
         showRenderIndicator();
@@ -1713,8 +1734,12 @@ function onEditorInput() {
     }, 1000);
 }
 
-// 编辑器 textarea 键盘事件：拦截 Tab 键，输入制表符而不是切换焦点
+// 编辑器 textarea 键盘事件：拦截 Tab 键和 Enter 键
 function onEditorTextareaKeydown(e) {
+    if (e.key === 'Enter') {
+        _handleEditorEnterKey(e);
+        return;
+    }
     if (e.key !== 'Tab') return;
     e.preventDefault();
 
@@ -1770,10 +1795,127 @@ function onEditorTextareaKeydown(e) {
     ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+// HTML/XML 自闭合标签集合（不需要闭合标签）
+const _voidElements = new Set([
+    'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+    'link', 'meta', 'param', 'source', 'track', 'wbr'
+]);
+
+/**
+ * 编辑器 Enter 键处理：
+ * 1. 保持当前行的缩进
+ * 2. 光标位于开闭标签之间时（<tag>|</tag>），正确展开并缩进
+ */
+function _handleEditorEnterKey(e) {
+    const ta = editorTextarea;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const value = ta.value;
+
+    // 获取当前行的缩进
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const currentLine = value.substring(lineStart, start);
+    const indent = (currentLine.match(/^(\s*)/) || ['', ''])[1];
+
+    const beforeCursor = value.substring(0, start);
+    const afterCursor = value.substring(end);
+
+    // 判断当前文件是否为 HTML/XML 格式
+    const isHtmlXml = selectedFile && /\.(html|htm|xml|xhtml|svg)$/i.test(selectedFile);
+
+    if (isHtmlXml) {
+        // 检测光标前是否紧跟一个开标签，且光标后紧跟对应的闭标签
+        const openTagMatch = beforeCursor.match(/<([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*(?<!\/)>$/);
+
+        if (openTagMatch) {
+            const tagName = openTagMatch[1].toLowerCase();
+
+            if (!_voidElements.has(tagName)) {
+                // 检测光标后是否紧跟对应的闭标签
+                const closeTagRegex = new RegExp(`^\\s*</${tagName}\\s*>`);
+                const closeMatch = afterCursor.match(closeTagRegex);
+
+                if (closeMatch) {
+                    // <tag>|</tag> → 展开为三行并将光标定位到缩进的中间行
+                    e.preventDefault();
+                    const newIndent = indent + '\t';
+                    const remainAfter = afterCursor.substring(closeMatch[0].length);
+                    const insertion = `\n${newIndent}\n${indent}</${tagName}>`;
+                    ta.value = beforeCursor + insertion + remainAfter;
+                    ta.selectionStart = ta.selectionEnd = start + 1 + newIndent.length;
+                    ta.dispatchEvent(new Event('input', { bubbles: true }));
+                    return;
+                }
+            }
+        }
+    }
+
+    // 通用缩进保持：如果当前行有缩进，新行继承相同缩进
+    if (indent) {
+        e.preventDefault();
+        const insertion = '\n' + indent;
+        ta.value = beforeCursor + insertion + afterCursor;
+        ta.selectionStart = ta.selectionEnd = start + insertion.length;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // 无缩进时保持浏览器默认 Enter 行为
+}
+
+/**
+ * 检测输入 > 后是否完成了一个开标签，自动补全对应的闭标签。
+ * 光标保持在 <tag>|</tag> 之间，方便用户继续输入内容。
+ */
+function _tryAutoCloseTag() {
+    const isHtmlXml = selectedFile && /\.(html|htm|xml|xhtml|svg)$/i.test(selectedFile);
+    if (!isHtmlXml) return;
+
+    const ta = editorTextarea;
+    const pos = ta.selectionStart;
+    const value = ta.value;
+    const beforeCursor = value.substring(0, pos);
+
+    // 检测光标前是否刚完成一个非自闭合的开标签
+    const openTagMatch = beforeCursor.match(/<([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*(?<!\/)>$/);
+    if (!openTagMatch) return;
+
+    const tagName = openTagMatch[1].toLowerCase();
+    if (_voidElements.has(tagName)) return;
+
+    // 如果闭标签已经存在于光标后方，不重复插入
+    const afterCursor = value.substring(pos);
+    const closeTagRegex = new RegExp(`^</${tagName}\\s*>`);
+    if (closeTagRegex.test(afterCursor)) return;
+
+    // 插入闭标签，光标保持在开闭标签之间
+    const closeTag = `</${tagName}>`;
+    ta.value = beforeCursor + closeTag + afterCursor;
+    ta.selectionStart = ta.selectionEnd = pos;
+    // 更新 currentMarkdownSource（因为上面直接修改了 ta.value）
+    currentMarkdownSource = ta.value;
+}
+
 // 客户端实时渲染 Markdown 预览
 function renderLivePreview() {
     const mdText = editorTextarea.value;
     const savedScrollTop = previewContent.scrollTop;
+
+    // HTML 文件：交由浏览器作为独立文档渲染，避免与主页样式互相污染
+    if (selectedFile && /\.(html|htm)$/i.test(selectedFile)) {
+        // 复用同一个 iframe 实例，熔错防抖频繁重加载带来的闪烁
+        let iframe = previewContent.querySelector('iframe.html-preview-frame');
+        if (!iframe) {
+            previewContent.innerHTML = '';
+            iframe = document.createElement('iframe');
+            iframe.className = 'html-preview-frame';
+            iframe.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals allow-same-origin');
+            iframe.style.cssText = 'width:100%;height:100%;border:0;background:#fff;display:block;';
+            previewContent.appendChild(iframe);
+        }
+        iframe.srcdoc = mdText;
+        previewContent.scrollTop = savedScrollTop;
+        hideRenderIndicator();
+        return;
+    }
 
     if (typeof marked === 'undefined') {
         // 如果 marked 未加载，使用简单的转义显示
@@ -2847,7 +2989,7 @@ async function createFile() {
     const dotIndex = nameInput.lastIndexOf('.');
     if (dotIndex > 0) {
         const inputExt = nameInput.substring(dotIndex + 1).toLowerCase();
-        if (['md', 'markdown', 'txt'].includes(inputExt)) {
+        if (['md', 'markdown', 'txt', 'html', 'htm'].includes(inputExt)) {
             baseName = nameInput.substring(0, dotIndex);
         }
     }
@@ -3049,8 +3191,34 @@ function _slugify(text) {
         .replace(/^-+|-+$/g, '') || 'section';
 }
 
+// HTML iframe 预览模式下，TOC 关联的 iframe 与其 scroll 监听，用于在切换文档时及时卸载。
+let _tocSourceFrame = null;
+let _tocFrameScrollHandler = null;
+
+function _detachTocFrameScroll() {
+    if (_tocSourceFrame && _tocFrameScrollHandler) {
+        try {
+            const win = _tocSourceFrame.contentWindow;
+            if (win) win.removeEventListener('scroll', _tocFrameScrollHandler);
+        } catch (e) { /* ignore */ }
+    }
+    _tocSourceFrame = null;
+    _tocFrameScrollHandler = null;
+}
+
 function buildToc() {
     if (!previewTocList || !previewContent) return;
+
+    // 切换文档/重建 TOC 时，先卸载上一个 iframe 的 scroll 监听
+    _detachTocFrameScroll();
+
+    // HTML iframe 预览模式：进入 iframe 内部解析 headings
+    const iframe = previewContent.querySelector('iframe.html-preview-frame');
+    if (iframe) {
+        _buildTocForHtmlIframe(iframe);
+        return;
+    }
+
     const headings = previewContent.querySelectorAll('.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6');
     previewTocList.innerHTML = '';
     _tocItems = [];
@@ -3094,6 +3262,108 @@ function buildToc() {
     updateTocActive();
 }
 
+function _buildTocForHtmlIframe(iframe) {
+    if (!previewTocList) return;
+
+    const renderEmpty = () => {
+        previewTocList.innerHTML = '';
+        _tocItems = [];
+        const empty = document.createElement('div');
+        empty.className = 'preview-toc-empty';
+        empty.textContent = (typeof t === 'function') ? t('toc_empty') : '暂无目录';
+        previewTocList.appendChild(empty);
+    };
+
+    const setup = () => {
+        let doc = null;
+        try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); } catch (e) { doc = null; }
+        if (!doc || !doc.body) { renderEmpty(); return; }
+
+        const headings = doc.body.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        previewTocList.innerHTML = '';
+        _tocItems = [];
+        if (!headings.length) { renderEmpty(); return; }
+
+        const usedIds = new Set();
+        const fragment = document.createDocumentFragment();
+        headings.forEach((h, idx) => {
+            let id = h.id || (_slugify(h.textContent) || ('section-' + idx));
+            let uniqueId = id;
+            let n = 1;
+            while (usedIds.has(uniqueId)) uniqueId = id + '-' + (++n);
+            usedIds.add(uniqueId);
+            h.id = uniqueId;
+
+            const level = parseInt(h.tagName.substring(1), 10) || 1;
+            const btn = document.createElement('a');
+            btn.className = 'preview-toc-item level-' + level;
+            btn.href = '#' + uniqueId;
+            btn.textContent = (h.textContent || '').trim();
+            btn.title = btn.textContent;
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                _suppressTocScroll = true;
+                if (_suppressTocScrollTimer) clearTimeout(_suppressTocScrollTimer);
+                _suppressTocScrollTimer = setTimeout(() => { _suppressTocScroll = false; _suppressTocScrollTimer = 0; }, 800);
+                try { h.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { /* ignore */ }
+            });
+            fragment.appendChild(btn);
+            _tocItems.push({ id: uniqueId, el: h, btn, level });
+        });
+        previewTocList.appendChild(fragment);
+        _tocSourceFrame = iframe;
+
+        applyTocLevelFilter();
+        updateTocActive();
+
+        // 监听 iframe 内部滚动，同步 active 项
+        try {
+            const win = iframe.contentWindow;
+            if (win) {
+                _tocFrameScrollHandler = () => {
+                    if (_tocScrollRaf) return;
+                    _tocScrollRaf = requestAnimationFrame(() => {
+                        _tocScrollRaf = 0;
+                        updateTocActive();
+                    });
+                };
+                win.addEventListener('scroll', _tocFrameScrollHandler, { passive: true });
+            }
+        } catch (e) { /* ignore */ }
+    };
+
+    // iframe srcdoc 在不同浏览器上的 load 事件时机不一致，
+    // 且 contentDocument.readyState 初始可能为 about:blank 的 'complete'，
+    // 所以采用：load 事件 + 内容就绪轮询 双保险，并以标志位保证只 setup 一次。
+    let invoked = false;
+    const guardedSetup = () => {
+        if (invoked) return;
+        invoked = true;
+        setup();
+    };
+
+    iframe.addEventListener('load', guardedSetup, { once: true });
+
+    let attempts = 0;
+    const poll = setInterval(() => {
+        attempts++;
+        let doc = null;
+        try { doc = iframe.contentDocument; } catch (e) { /* ignore */ }
+        const contentReady = !!(doc && doc.body && (
+            doc.body.children.length > 0
+            || (doc.body.textContent || '').trim().length > 0
+        ));
+        if (contentReady) {
+            clearInterval(poll);
+            guardedSetup();
+        } else if (attempts >= 30) {
+            // 3s 兑底：即使 body 仍为空也执行 setup，控制场进入“暂无目录”状态
+            clearInterval(poll);
+            guardedSetup();
+        }
+    }, 100);
+}
+
 function scrollHeadingIntoView(headingEl) {
     if (!headingEl || !previewContent) return;
     // 抑制目录栏的自动滚动，避免跳转时目录栏跟着滚
@@ -3120,6 +3390,35 @@ function onPreviewScroll() {
 
 function updateTocActive() {
     if (!_tocItems.length || !previewContent) return;
+
+    // HTML iframe 预览模式：使用 iframe 内部 viewport 计算 active
+    if (_tocSourceFrame) {
+        let activeIdx = 0;
+        try {
+            for (let i = 0; i < _tocItems.length; i++) {
+                const rect = _tocItems[i].el.getBoundingClientRect();
+                if (rect.top - 24 <= 0) {
+                    activeIdx = i;
+                } else {
+                    break;
+                }
+            }
+        } catch (e) { return; }
+        _tocItems.forEach((item, i) => {
+            item.btn.classList.toggle('active', i === activeIdx);
+        });
+        const activeBtn = _tocItems[activeIdx] && _tocItems[activeIdx].btn;
+        if (!_suppressTocScroll && activeBtn && previewTocList) {
+            const btnRect = activeBtn.getBoundingClientRect();
+            const listRect = previewTocList.getBoundingClientRect();
+            if (btnRect.top < listRect.top || btnRect.bottom > listRect.bottom) {
+                const target = previewTocList.scrollTop + (btnRect.top - listRect.top) - 8;
+                previewTocList.scrollTo({ top: Math.max(0, target) });
+            }
+        }
+        return;
+    }
+
     const containerTop = previewContent.getBoundingClientRect().top;
     let activeIdx = 0;
     for (let i = 0; i < _tocItems.length; i++) {

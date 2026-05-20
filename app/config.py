@@ -14,7 +14,7 @@ class Config:
     BACKUPS_DIR = str(_PATHS['backups_dir'])
     DATA_DIR = str(_PATHS['data_dir'])
     LOG_FILE = str(_PATHS['log_file'])
-    ALLOWED_EXTENSIONS = {'md', 'markdown', 'txt'}
+    ALLOWED_EXTENSIONS = {'md', 'markdown', 'txt', 'html', 'htm'}
     SEND_FILE_MAX_AGE_DEFAULT = 0  # 开发模式下不缓存静态文件
 
     @staticmethod

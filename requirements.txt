@@ -40,6 +40,8 @@ pyee==13.0.1
     # via playwright
 pygments==2.17.2
     # via markinote (pyproject.toml)
+pypdf>=5.0.0
+    # via markinote (pyproject.toml)
 requests==2.33.1
     # via markinote (pyproject.toml)
 soupsieve==2.8.3
