@@ -3279,6 +3279,11 @@ function _buildTocForHtmlIframe(iframe) {
         try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); } catch (e) { doc = null; }
         if (!doc || !doc.body) { renderEmpty(); return; }
 
+        // 拦截 iframe 内部 # 锚点链接：srcdoc 模式下 iframe 当前 URL 为 about:srcdoc，
+        // 浏览器默认导航会把 iframe 跳到空白文档，体感上像"跳到外层其它位置"。
+        // 这里改为在 iframe 内部用 scrollIntoView 平滑滚动到目标元素。
+        _bindHtmlIframeAnchorIntercept(iframe, doc);
+
         const headings = doc.body.querySelectorAll('h1, h2, h3, h4, h5, h6');
         previewTocList.innerHTML = '';
         _tocItems = [];
@@ -3362,6 +3367,38 @@ function _buildTocForHtmlIframe(iframe) {
             guardedSetup();
         }
     }, 100);
+}
+
+function _bindHtmlIframeAnchorIntercept(iframe, doc) {
+    if (!doc || doc._mnAnchorBound) return;
+    doc._mnAnchorBound = true;
+    doc.addEventListener('click', (e) => {
+        const a = e.target && e.target.closest && e.target.closest('a[href]');
+        if (!a) return;
+        const href = a.getAttribute('href');
+        if (!href || href.charAt(0) !== '#') return;
+        e.preventDefault();
+        const raw = href.length > 1 ? href.slice(1) : '';
+        let id = raw;
+        try { id = decodeURIComponent(raw); } catch (_) { /* keep raw */ }
+        if (!id) {
+            try { (iframe.contentWindow || {}).scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) { /* ignore */ }
+            return;
+        }
+        let target = null;
+        try {
+            target = doc.getElementById(id);
+            if (!target && typeof CSS !== 'undefined' && CSS.escape) {
+                target = doc.querySelector('a[name="' + CSS.escape(id) + '"]');
+            }
+        } catch (_) { /* ignore */ }
+        if (target) {
+            _suppressTocScroll = true;
+            if (_suppressTocScrollTimer) clearTimeout(_suppressTocScrollTimer);
+            _suppressTocScrollTimer = setTimeout(() => { _suppressTocScroll = false; _suppressTocScrollTimer = 0; }, 800);
+            try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { /* ignore */ }
+        }
+    }, true);
 }
 
 function scrollHeadingIntoView(headingEl) {
