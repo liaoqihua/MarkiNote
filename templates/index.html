@@ -39,7 +39,7 @@
     <script src="{{ url_for('static', filename='libs/mermaid.min.js') }}" defer></script>
     <script src="{{ url_for('static', filename='libs/html2canvas.min.js') }}" defer></script>
     <!-- marked.js - 客户端 Markdown 渲染，用于实时编辑预览 -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="{{ url_for('static', filename='libs/marked.min.js') }}"></script>
 </head>
 <body>
     <div class="app-container">
