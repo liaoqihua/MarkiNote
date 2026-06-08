@@ -4,9 +4,11 @@ PDF 导出使用真实浏览器渲染 HTML 后打印为 PDF，确保 Mermaid、M
 """
 from __future__ import annotations
 
+import base64
 import html
 import io
 import logging
+import mimetypes
 import os
 import re
 from dataclasses import dataclass
@@ -74,6 +76,54 @@ def safe_library_file(base_dir: str | os.PathLike[str], rel_path: str) -> Path:
     return target
 
 
+def _fix_image_paths_in_html(rendered_html: str, doc_path: str, base_dir: str | os.PathLike[str]) -> str:
+    """将渲染后 HTML 中的图片相对路径转换为 data: URI。
+
+    Playwright ``page.set_content()`` 的页面 origin 为 ``about:blank``，
+    无法加载任何外部资源。将图片内嵌为 base64 data URI 可确保
+    PDF 导出时图片始终可见，无需依赖服务器可达性。
+    """
+    doc_dir = doc_path.rsplit('/', 1)[0] if '/' in doc_path else ''
+    library_base = Path(base_dir).resolve()
+
+    soup = BeautifulSoup(rendered_html, 'html.parser')
+    imgs = soup.find_all('img')
+    if not imgs:
+        return rendered_html
+
+    for img in imgs:
+        src = img.get('src', '')
+        if not src:
+            continue
+        # 跳过已经是绝对 URL / data URI / API 路径的图片
+        if src.startswith(('http://', 'https://', 'data:', '/api/')):
+            continue
+
+        # 拼接图片在 library 中的绝对路径
+        if doc_dir:
+            image_rel = f'{doc_dir}/{src}'
+        else:
+            image_rel = src
+        image_abs = (library_base / image_rel).resolve()
+
+        # 安全检查：必须在 library 目录内
+        if not str(image_abs).startswith(str(library_base)):
+            continue
+        if not image_abs.is_file():
+            logger.debug('Image not found for PDF: %s', image_abs)
+            continue
+
+        # 读取文件并转为 data URI
+        try:
+            mime = mimetypes.guess_type(str(image_abs))[0] or 'image/png'
+            data_b64 = base64.b64encode(image_abs.read_bytes()).decode('ascii')
+            img['src'] = f'data:{mime};base64,{data_b64}'
+        except Exception:  # noqa: BLE001
+            logger.debug('Failed to embed image for PDF: %s', image_abs, exc_info=True)
+
+    return str(soup)
+
+
 def read_pdf_document(base_dir: str | os.PathLike[str], rel_path: str) -> PdfDocument:
     """读取单个文档并渲染为 HTML。"""
     target = safe_library_file(base_dir, rel_path)
@@ -81,6 +131,8 @@ def read_pdf_document(base_dir: str | os.PathLike[str], rel_path: str) -> PdfDoc
     is_html = target.suffix.lower() in ('.html', '.htm')
     # HTML 文件直接使用原文作为渲染结果，不走 Markdown 渲染管道
     rendered = raw if is_html else process_markdown(raw)
+    # 将图片相对路径转为 data URI，确保 PDF 导出时图片可渲染
+    rendered = _fix_image_paths_in_html(rendered, rel_path.replace('\\', '/').strip('/'), base_dir)
     return PdfDocument(
         path=rel_path.replace('\\', '/').strip('/'),
         title=target.name,
