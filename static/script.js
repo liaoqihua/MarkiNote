@@ -10,6 +10,7 @@ let _editorPosition = 'left'; // 编辑器位置：'left' | 'right'
 let _sidebarWasCollapsed = false; // 进入编辑前侧边栏是否已收起
 let _syncScrolling = false; // 是否正在同步滚动（防止循环触发）
 let _editDebounceTimer = null;
+let _markedLivePreviewConfigured = false;
 let allFiles = []; // 存储所有文件用于搜索
 let hasUnsavedChanges = false; // 是否有未保存的改动
 let selectedExportFiles = new Set(); // 多文档 PDF 导出选中的文件
@@ -1540,13 +1541,7 @@ function enterEditMode() {
     editorTextarea.value = currentMarkdownSource;
     editorTextarea.focus();
 
-    // 初始化 marked 配置
-    if (typeof marked !== 'undefined') {
-        marked.setOptions({
-            breaks: true,
-            gfm: true
-        });
-    }
+    configureMarkedForLivePreview();
 
     // 实时渲染初始内容
     renderLivePreview();
@@ -1894,10 +1889,48 @@ function _tryAutoCloseTag() {
     currentMarkdownSource = ta.value;
 }
 
+function configureMarkedForLivePreview() {
+    if (typeof marked === 'undefined') return;
+
+    marked.setOptions({
+        breaks: true,
+        gfm: true
+    });
+
+    if (_markedLivePreviewConfigured || typeof marked.use !== 'function') return;
+
+    marked.use({
+        extensions: [{
+            name: 'strong',
+            level: 'inline',
+            start(src) {
+                return src.indexOf('**');
+            },
+            tokenizer(src) {
+                const match = /^\*\*(?=\S)([\s\S]*?\S)\*\*(?!\*)/.exec(src);
+                if (!match) return false;
+                return {
+                    type: 'strong',
+                    raw: match[0],
+                    text: match[1],
+                    tokens: this.lexer.inlineTokens(match[1])
+                };
+            },
+            renderer(token) {
+                return `<strong>${this.parser.parseInline(token.tokens || [])}</strong>`;
+            }
+        }]
+    });
+
+    _markedLivePreviewConfigured = true;
+}
+
 // 客户端实时渲染 Markdown 预览
 function renderLivePreview() {
     const mdText = editorTextarea.value;
     const savedScrollTop = previewContent.scrollTop;
+
+    configureMarkedForLivePreview();
 
     // HTML 文件：交由浏览器作为独立文档渲染，避免与主页样式互相污染
     if (selectedFile && /\.(html|htm)$/i.test(selectedFile)) {
