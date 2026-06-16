@@ -5,6 +5,73 @@ import re
 
 logger = logging.getLogger(__name__)
 
+_TABLE_SEPARATOR_RE = re.compile(
+    r'^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?\s*$'
+)
+_FENCE_RE = re.compile(r'^\s*(`{3,}|~{3,})')
+_BLOCK_BOUNDARY_RE = re.compile(
+    r'^\s*(?:#{1,6}\s+|[-+*]\s+|\d+[.)]\s+|>|```|~~~|={3,}\s*$|-{3,}\s*$)'
+)
+
+
+def _is_table_separator(line):
+    return bool(_TABLE_SEPARATOR_RE.match(line))
+
+
+def _is_table_row(line):
+    stripped = line.strip()
+    if not stripped or '|' not in stripped:
+        return False
+    if _BLOCK_BOUNDARY_RE.match(stripped):
+        return False
+    return True
+
+
+def _ensure_blank_line_after_tables(md_content):
+    """在表格后方补空行，避免 Python-Markdown 把后续段落吞进表格。"""
+    lines = md_content.split('\n')
+    fixed_lines = []
+    i = 0
+    in_fence = None
+
+    while i < len(lines):
+        line = lines[i]
+        fence_match = _FENCE_RE.match(line)
+        if fence_match:
+            marker = fence_match.group(1)
+            marker_char = marker[0]
+            marker_len = len(marker)
+            if in_fence and marker_char == in_fence[0] and marker_len >= in_fence[1]:
+                in_fence = None
+            elif not in_fence:
+                in_fence = (marker_char, marker_len)
+
+        fixed_lines.append(line)
+
+        if in_fence or i + 1 >= len(lines) or not _is_table_row(line) or not _is_table_separator(lines[i + 1]):
+            i += 1
+            continue
+
+        i += 1
+        fixed_lines.append(lines[i])
+        i += 1
+
+        while i < len(lines):
+            table_line = lines[i]
+            if not table_line.strip():
+                fixed_lines.append(table_line)
+                i += 1
+                break
+            if _is_table_row(table_line):
+                fixed_lines.append(table_line)
+                i += 1
+                continue
+
+            fixed_lines.append('')
+            break
+
+    return '\n'.join(fixed_lines)
+
 def process_markdown(md_content):
     """处理Markdown内容并渲染为HTML
     
@@ -92,6 +159,10 @@ def process_markdown(md_content):
     # 匹配独立的行（前后有换行，不以#、-、*、>开头）
     md_content = re.sub(r'^(?![#\-\*>\s])(.+(?:\\sum|\\frac|\\int|\\prod|\\sqrt).+)$', 
                        smart_math_detect, md_content, flags=re.MULTILINE)
+
+    # Python-Markdown 的 tables 扩展要求表格后使用空行结束；编辑模式的 marked.js
+    # 会在遇到标题/普通文本时自动结束表格。这里补齐空行，使两种预览行为一致。
+    md_content = _ensure_blank_line_after_tables(md_content)
     
     # 修复列表格式：自动在列表项前添加空行，标准化缩进
     # 避免列表被误识别为代码块（4+空格会被识别为代码块）
