@@ -14,6 +14,12 @@ _BLOCK_BOUNDARY_RE = re.compile(
 )
 
 
+_UNORDERED_ITEM_RE = re.compile(r'^([-*+])(\s)')
+_HEADING_RE = re.compile(r'^#{1,6}\s')
+_HR_RE = re.compile(r'^(?:[-*_]\s*){3,}$')
+_ORDERED_ITEM_RE = re.compile(r'^\d+[.)]\s')
+
+
 def _is_table_separator(line):
     return bool(_TABLE_SEPARATOR_RE.match(line))
 
@@ -72,6 +78,70 @@ def _ensure_blank_line_after_tables(md_content):
 
     return '\n'.join(fixed_lines)
 
+
+def _merge_unordered_list_with_preceding_paragraph(md_content):
+    """对齐无序列表与有序列表在"紧贴普通段落"时的渲染行为。
+
+    Python-Markdown 默认会把紧贴普通段落（无空行）的无序列表识别为独立列表块，
+    而紧贴段落的有序列表则会被当作段落的一部分。这种不对称会让形如
+    "**标题**:\n- 项目一" 这类写法的渲染结果与
+    "**标题**:\n1. 项目一" 产生明显差异（前者题目与列表分离，
+    后者题目与列表合并），视觉上段前间距也不一致。
+
+    为了让两种列表行为一致，这里在前一行是普通文本时，对紧贴段落的无序列表
+    标记做反斜杠转义，使其作为段落的一部分参与渲染。
+    """
+    lines = md_content.split('\n')
+    result = []
+    in_fence = None
+
+    def _is_paragraph_line(line):
+        stripped = line.lstrip()
+        if not stripped:
+            return False
+        if _HEADING_RE.match(stripped):
+            return False
+        if stripped.startswith('>'):
+            return False
+        if _HR_RE.match(stripped):
+            return False
+        if _UNORDERED_ITEM_RE.match(stripped):
+            return False
+        if _ORDERED_ITEM_RE.match(stripped):
+            return False
+        if _FENCE_RE.match(stripped):
+            return False
+        if stripped.startswith('|'):
+            return False
+        return True
+
+    for line in lines:
+        fence_match = _FENCE_RE.match(line)
+        if fence_match:
+            marker = fence_match.group(1)
+            marker_char = marker[0]
+            marker_len = len(marker)
+            if in_fence and marker_char == in_fence[0] and marker_len >= in_fence[1]:
+                in_fence = None
+            elif not in_fence:
+                in_fence = (marker_char, marker_len)
+            result.append(line)
+            continue
+
+        if in_fence:
+            result.append(line)
+            continue
+
+        stripped = line.lstrip()
+        if _UNORDERED_ITEM_RE.match(stripped) and result and _is_paragraph_line(result[-1]):
+            lead = line[:len(line) - len(stripped)]
+            line = lead + '\\' + stripped
+
+        result.append(line)
+
+    return '\n'.join(result)
+
+
 def process_markdown(md_content):
     """处理Markdown内容并渲染为HTML
     
@@ -84,6 +154,9 @@ def process_markdown(md_content):
     # 清理行尾的双空格（Markdown中会被转换为<br>）
     # 保留真正需要换行的地方，移除意外的行尾空格
     md_content = re.sub(r'  +\n', '\n', md_content)
+
+    # 让无序列表在紧贴段落时与有序列表保持一致的渲染行为
+    md_content = _merge_unordered_list_with_preceding_paragraph(md_content)
     
     # 预处理：保护Mermaid代码块不被codehilite处理
     mermaid_blocks = []
