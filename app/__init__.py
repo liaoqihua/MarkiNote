@@ -46,11 +46,12 @@ def create_app():
         return response
 
     # 注册蓝图
-    from app.routes import main_bp, library_bp, ai_bp, pdf_bp
+    from app.routes import main_bp, library_bp, ai_bp, pdf_bp, word_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(library_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(pdf_bp)
+    app.register_blueprint(word_bp)
     
     return app
 

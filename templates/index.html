@@ -106,6 +106,12 @@
                         <path d="M5.5 7.5A.5.5 0 0 1 6 8v1.5h1.5a.5.5 0 0 1 0 1H6V12a.5.5 0 0 1-1 0v-1.5H3.5a.5.5 0 0 1 0-1H5V8a.5.5 0 0 1 .5-.5z"/>
                     </svg>
                 </button>
+                <button id="exportSelectedWordBtn" class="btn btn-secondary footer-btn icon-btn-round" title="导出选中文档为 Word" disabled>
+                    <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
+                        <path d="M10.5 7.5a.5.5 0 0 1 1 0V9H13a.5.5 0 0 1 0 1h-1.5v1.5a.5.5 0 0 1-1 0V10H9a.5.5 0 0 1 0-1h1.5V7.5zM3.5 7.5h3a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-4a.5.5 0 0 1 .5-.5zM4 8v3h2V8H4z"/>
+                    </svg>
+                </button>
                 <button id="deleteSelectedBtn" class="btn btn-danger footer-btn icon-btn-round" title="删除选中文档" disabled>
                     <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor">
                         <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
@@ -169,6 +175,13 @@
                             <path d="M4.603 14.087a.8.8 0 0 1-.438-.42c-.195-.388-.13-.776.08-1.102.198-.307.526-.568.897-.787a7.7 7.7 0 0 1 1.482-.645 20 20 0 0 0 1.062-2.227 7.3 7.3 0 0 1-.43-1.295c-.086-.4-.119-.796-.046-1.136.075-.354.274-.672.65-.823.192-.077.4-.12.602-.077.2.043.36.17.456.355.19.36.136.908.02 1.36-.104.402-.292.86-.537 1.343.206.504.47.999.773 1.45a17 17 0 0 1 1.597-.16c.483-.023.944.014 1.303.16.378.153.671.42.742.808.036.193-.004.39-.104.56-.1.172-.268.298-.486.362-.423.124-.92-.016-1.45-.34a5.2 5.2 0 0 1-1.053-.89 17.6 17.6 0 0 0-2.17.426 18 18 0 0 1-1.05 1.84c-.32.49-.667.902-1.02 1.15-.355.25-.75.36-1.082.21z"/>
                         </svg>
                         <span class="btn-text">导出 PDF</span>
+                    </button>
+                    <button id="exportCurrentWordBtn" class="btn btn-secondary" disabled title="导出当前文档为 Word">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
+                            <path d="M10.5 7.5a.5.5 0 0 1 1 0V9H13a.5.5 0 0 1 0 1h-1.5v1.5a.5.5 0 0 1-1 0V10H9a.5.5 0 0 1 0-1h1.5V7.5zM3.5 7.5h3a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-4a.5.5 0 0 1 .5-.5zM4 8v3h2V8H4z"/>
+                        </svg>
+                        <span class="btn-text">导出 Word</span>
                     </button>
                     <button id="aiToggleBtn" class="ai-toggle-btn" title="AI 助手">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -697,6 +710,13 @@
                 <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
             </svg>
             导出为 PDF
+        </div>
+        <div class="context-menu-item" onclick="contextMenuAction('exportWord')">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
+                <path d="M10.5 7.5a.5.5 0 0 1 1 0V9H13a.5.5 0 0 1 0 1h-1.5v1.5a.5.5 0 0 1-1 0V10H9a.5.5 0 0 1 0-1h1.5V7.5zM3.5 7.5h3a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-4a.5.5 0 0 1 .5-.5zM4 8v3h2V8H4z"/>
+            </svg>
+            导出为 Word
         </div>
         <div class="context-menu-item danger" onclick="contextMenuAction('delete')">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">

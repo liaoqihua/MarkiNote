@@ -31,6 +31,8 @@ const fileInput = document.getElementById('fileInput');
 const viewSourceBtn = document.getElementById('viewSourceBtn');
 const exportCurrentPdfBtn = document.getElementById('exportCurrentPdfBtn');
 const exportSelectedPdfBtn = document.getElementById('exportSelectedPdfBtn');
+const exportCurrentWordBtn = document.getElementById('exportCurrentWordBtn');
+const exportSelectedWordBtn = document.getElementById('exportSelectedWordBtn');
 const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 const contextMenu = document.getElementById('contextMenu');
 const previewContextMenu = document.getElementById('previewContextMenu');
@@ -126,6 +128,8 @@ function setupEventListeners() {
     editorTextarea.addEventListener('paste', onEditorPasteImage);
     exportCurrentPdfBtn.addEventListener('click', exportCurrentFileToPdf);
     exportSelectedPdfBtn.addEventListener('click', exportSelectedFilesToPdf);
+    if (exportCurrentWordBtn) exportCurrentWordBtn.addEventListener('click', exportCurrentFileToWord);
+    if (exportSelectedWordBtn) exportSelectedWordBtn.addEventListener('click', exportSelectedFilesToWord);
     if (deleteSelectedBtn) deleteSelectedBtn.addEventListener('click', deleteSelectedItems);
     if (toggleAllSelectBtn) toggleAllSelectBtn.addEventListener('click', toggleAllFileSelection);
     searchInput.addEventListener('input', handleSearch);
@@ -397,10 +401,11 @@ function selectFile(path) {
         }
     });
     
-    // 启用查看源代码和当前文档 PDF 导出按钮
+    // 启用查看源代码和当前文档 PDF / Word 导出按钮
     viewSourceBtn.disabled = false;
     toggleEditBtn.disabled = false;
     exportCurrentPdfBtn.disabled = false;
+    if (exportCurrentWordBtn) exportCurrentWordBtn.disabled = false;
     if (tocToggleBtn) tocToggleBtn.disabled = false;
 
     // 同步 AI 上下文
@@ -513,6 +518,12 @@ function updateExportSelectionState() {
     exportSelectedPdfBtn.title = fileCount > 0
         ? `导出选中的 ${fileCount} 个文档为 PDF`
         : '导出选中文档为 PDF';
+    if (exportSelectedWordBtn) {
+        exportSelectedWordBtn.disabled = fileCount === 0;
+        exportSelectedWordBtn.title = fileCount > 0
+            ? `导出选中的 ${fileCount} 个文档为 Word`
+            : '导出选中文档为 Word';
+    }
     // 更新删除选中按钮状态（文件+文件夹都算）
     const itemCount = selectedExportFiles.size;
     if (deleteSelectedBtn) {
@@ -579,14 +590,14 @@ function filenameFromDisposition(disposition, fallback) {
     return match ? match[1] : fallback;
 }
 
-async function downloadPdfResponse(response, fallbackName) {
+async function downloadExportResponse(response, fallbackName, typeLabel = '导出') {
     const contentType = response.headers.get('Content-Type') || '';
     if (!response.ok) {
         if (contentType.includes('application/json')) {
             const data = await response.json();
-            throw new Error(data.error || 'PDF 导出失败');
+            throw new Error(data.error || `${typeLabel}失败`);
         }
-        throw new Error('PDF 导出失败');
+        throw new Error(`${typeLabel}失败`);
     }
 
     const blob = await response.blob();
@@ -609,7 +620,7 @@ async function exportFileToPdf(path) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ path })
         });
-        await downloadPdfResponse(response, `${path.split('/').pop().replace(/\.[^.]+$/, '') || 'MarkiNote'}.pdf`);
+        await downloadExportResponse(response, `${path.split('/').pop().replace(/\.[^.]+$/, '') || 'MarkiNote'}.pdf`, 'PDF 导出');
     } catch (error) {
         showError(error.message);
     }
@@ -621,6 +632,57 @@ async function exportCurrentFileToPdf() {
         return;
     }
     await exportFileToPdf(selectedFile);
+}
+
+async function exportFileToWord(path) {
+    try {
+        showSuccess('正在生成 Word...');
+        const response = await fetch('/api/export/word', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ path })
+        });
+        await downloadExportResponse(response, `${path.split('/').pop().replace(/\.[^.]+$/, '') || 'MarkiNote'}.docx`, 'Word 导出');
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+async function exportCurrentFileToWord() {
+    if (!selectedFile) {
+        showError('请先选择一个文档');
+        return;
+    }
+    await exportFileToWord(selectedFile);
+}
+
+async function exportSelectedFilesToWord() {
+    const allPaths = Array.from(selectedExportFiles);
+    const paths = allPaths.filter(p => {
+        const el = fileList.querySelector(`.file-item[data-path="${_escapeSelector(p)}"]`);
+        return el && el.dataset.type === 'file';
+    });
+    if (paths.length === 0) {
+        showError('请先勾选要导出的文档');
+        return;
+    }
+
+    try {
+        const mergeToOne = paths.length === 1 || confirm(
+            `批量导出 ${paths.length} 个文档：\n\n点击“确定”合并导出为一个 Word。\n点击“取消”按各个文件分别导出，并打包为 ZIP。`
+        );
+        showSuccess(mergeToOne
+            ? `正在合并导出 ${paths.length} 个文档...`
+            : `正在分别导出 ${paths.length} 个文档...`);
+        const response = await fetch(mergeToOne ? '/api/export/word/batch' : '/api/export/word/batch/separate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ paths })
+        });
+        await downloadExportResponse(response, mergeToOne ? 'MarkiNote-Export.docx' : 'MarkiNote-Words.zip', 'Word 导出');
+    } catch (error) {
+        showError(error.message);
+    }
 }
 
 async function exportSelectedFilesToPdf() {
@@ -647,7 +709,7 @@ async function exportSelectedFilesToPdf() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ paths })
         });
-        await downloadPdfResponse(response, mergeToOne ? 'MarkiNote-Export.pdf' : 'MarkiNote-PDFs.zip');
+        await downloadExportResponse(response, mergeToOne ? 'MarkiNote-Export.pdf' : 'MarkiNote-PDFs.zip', 'PDF 导出');
     } catch (error) {
         showError(error.message);
     }
@@ -824,6 +886,14 @@ async function contextMenuAction(action) {
         case 'exportPdf':
             if (type === 'file') {
                 await exportFileToPdf(path);
+            } else {
+                showError('只能导出文件，不能直接导出文件夹');
+            }
+            break;
+
+        case 'exportWord':
+            if (type === 'file') {
+                await exportFileToWord(path);
             } else {
                 showError('只能导出文件，不能直接导出文件夹');
             }

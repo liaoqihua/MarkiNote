@@ -63,7 +63,7 @@
             name_empty: '名称不能为空', name_same: '新名称与原名称相同',
             source_not_found: '在源代码中未找到该文本',
             more_actions: '更多操作', copy_code: '复制代码', copy_latex: '复制LaTeX代码',
-            export_jpg: '导出为JPG', export_pdf: '导出为 PDF', copy_source: '复制源代码',
+            export_jpg: '导出为JPG', export_pdf: '导出为 PDF', export_word: '导出为 Word', copy_source: '复制源代码',
             just_now: '刚刚', minutes_ago: '{n} 分钟前', hours_ago: '{n} 小时前', days_ago: '{n} 天前',
             collapse_sidebar: '收起/展开侧边栏',
             ai_panel_title: 'AI 助手', new_chat: '新对话', chat_history: '对话历史',
@@ -173,7 +173,7 @@
             name_empty: 'Name cannot be empty', name_same: 'New name is the same as the original',
             source_not_found: 'Text not found in source code',
             more_actions: 'More', copy_code: 'Copy code', copy_latex: 'Copy LaTeX',
-            export_jpg: 'Export as JPG', export_pdf: 'Export as PDF', copy_source: 'Copy source',
+            export_jpg: 'Export as JPG', export_pdf: 'Export as PDF', export_word: 'Export as Word', copy_source: 'Copy source',
             just_now: 'Just now', minutes_ago: '{n} min ago', hours_ago: '{n} hr ago', days_ago: '{n} days ago',
             collapse_sidebar: 'Toggle sidebar',
             ai_panel_title: 'AI Assistant', new_chat: 'New Chat', chat_history: 'History',
@@ -278,7 +278,7 @@
             name_empty: 'Le nom ne peut pas être vide', name_same: 'Le nom est identique',
             source_not_found: 'Texte non trouvé dans le code source',
             more_actions: 'Plus', copy_code: 'Copier le code', copy_latex: 'Copier LaTeX',
-            export_jpg: 'Exporter en JPG', export_pdf: 'Exporter en PDF', copy_source: 'Copier la source',
+            export_jpg: 'Exporter en JPG', export_pdf: 'Exporter en PDF', export_word: 'Exporter en Word', copy_source: 'Copier la source',
             just_now: "À l'instant", minutes_ago: 'il y a {n} min', hours_ago: 'il y a {n} h', days_ago: 'il y a {n} j',
             collapse_sidebar: 'Basculer la barre latérale',
             ai_panel_title: 'Assistant IA', new_chat: 'Nouvelle conversation', chat_history: 'Historique',
@@ -383,7 +383,7 @@
             name_empty: '名前を入力してください', name_same: '同じ名前です',
             source_not_found: 'テキストが見つかりません',
             more_actions: 'その他', copy_code: 'コードをコピー', copy_latex: 'LaTeXをコピー',
-            export_jpg: 'JPGとして保存', export_pdf: 'PDFとして保存', copy_source: 'ソースをコピー',
+            export_jpg: 'JPGとして保存', export_pdf: 'PDFとして保存', export_word: 'Wordとして保存', copy_source: 'ソースをコピー',
             just_now: 'たった今', minutes_ago: '{n}分前', hours_ago: '{n}時間前', days_ago: '{n}日前',
             collapse_sidebar: 'サイドバー切替',
             ai_panel_title: 'AIアシスタント', new_chat: '新規チャット', chat_history: '履歴',
@@ -572,7 +572,8 @@
         if (cmItems[0]) { const t0 = cmItems[0].lastChild; if (t0) t0.textContent = '\n            ' + t('rename') + '\n        '; }
         if (cmItems[1]) { const t1 = cmItems[1].lastChild; if (t1) t1.textContent = '\n            ' + t('move_to') + '\n        '; }
         if (cmItems[2]) { const t2 = cmItems[2].lastChild; if (t2) t2.textContent = '\n            ' + t('export_pdf') + '\n        '; }
-        if (cmItems[3]) { const t3 = cmItems[3].lastChild; if (t3) t3.textContent = '\n            ' + t('delete_word') + '\n        '; }
+        if (cmItems[3]) { const t3 = cmItems[3].lastChild; if (t3) t3.textContent = '\n            ' + t('export_word') + '\n        '; }
+        if (cmItems[4]) { const t4 = cmItems[4].lastChild; if (t4) t4.textContent = '\n            ' + t('delete_word') + '\n        '; }
 
         const pcmItems = document.querySelectorAll('#previewContextMenu .context-menu-item');
         if (pcmItems[0]) { const t0 = pcmItems[0].lastChild; if (t0) t0.textContent = '\n            ' + t('copy') + '\n        '; }
